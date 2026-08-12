@@ -1,6 +1,0 @@
-{
-  "name": "On-chain Ethereum 2.0",
-  "description": "Secure decentralized finance yield farming platform with direct wallet connection, real-time transaction logging, and automated yield payouts.",
-  "requestFramePermissions": [],
-  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
-}
