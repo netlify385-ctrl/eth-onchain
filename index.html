@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>On-chain Tether USDT</title>
+    <script type="text/javascript">
+      // Auto restore googtrans cookie from localStorage if present
+      (function() {
+        var langCode = localStorage.getItem('selected_language_code');
+        if (langCode && langCode !== 'en') {
+          var gtCode = langCode.split('-')[0];
+          var cookieVal = '/en/' + gtCode;
+          document.cookie = 'googtrans=' + cookieVal + '; path=/; domain=' + window.location.hostname;
+          document.cookie = 'googtrans=' + cookieVal + '; path=/';
+        }
+      })();
+
+      function googleTranslateElementInit() {
+        if (window.google && window.google.translate) {
+          new window.google.translate.TranslateElement({
+            pageLanguage: 'en',
+            includedLanguages: 'en,ja,ko,fr,de,es,pt,ru,th,vi,it,tr,ar,id,ms,hi',
+            layout: window.google.translate.TranslateElement.InlineLayout.SIMPLE,
+            autoDisplay: false
+          }, 'google_translate_element');
+
+          // Trigger initial selection if stored
+          setTimeout(function() {
+            var langCode = localStorage.getItem('selected_language_code');
+            if (langCode && langCode !== 'en') {
+              var gtCode = langCode.split('-')[0];
+              var selectEl = document.querySelector('.goog-te-combo');
+              if (selectEl) {
+                selectEl.value = gtCode;
+                selectEl.dispatchEvent(new Event('change'));
+              }
+            }
+          }, 300);
+        }
+      }
+    </script>
+    <script type="text/javascript" src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+  </head>
+  <body>
+    <div id="google_translate_element" style="position: absolute; left: -9999px; top: -9999px; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none;"></div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

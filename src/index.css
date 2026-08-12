@@ -1,0 +1,28 @@
+@import "tailwindcss";
+
+/* Google Translate UI Cleanup & Layout Stabilization */
+.goog-te-banner-frame.skiptranslate,
+.goog-te-banner-frame,
+.goog-te-balloon-frame,
+#goog-gt-tt,
+.goog-te-spinner-pos {
+  display: none !important;
+  visibility: hidden !important;
+}
+
+body {
+  top: 0px !important;
+  position: static !important;
+}
+
+.goog-te-combo {
+  display: none !important;
+}
+
+.skiptranslate {
+  display: inline !important;
+}
+
+iframe.skiptranslate {
+  display: none !important;
+}
