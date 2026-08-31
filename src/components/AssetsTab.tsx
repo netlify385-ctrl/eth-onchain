@@ -867,12 +867,12 @@ export default function AssetsTab({
             </header>
 
             {/* Scrollable Content */}
-            <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8">
-              <div className="max-w-md mx-auto w-full space-y-4">
+            <main className="flex-1 overflow-y-auto p-3 sm:p-4">
+              <div className="max-w-md mx-auto w-full">
                 {showWithdrawHistory ? (
-                  <div className="space-y-3">
-                    <div className="flex justify-between items-center pb-2">
-                      <div className="flex items-center gap-2">
+                  <div className="space-y-2.5">
+                    <div className="flex justify-between items-center pb-1">
+                      <div className="flex items-center gap-1.5">
                         <History className="w-4 h-4 text-[#0052d4]" />
                         <h3 className="font-extrabold text-slate-800 text-sm">Withdrawal Records</h3>
                       </div>
@@ -886,12 +886,12 @@ export default function AssetsTab({
                     </div>
 
                     {historyLogs.filter((l) => l.type === 'withdraw').length === 0 ? (
-                      <div className="text-center py-16 bg-white rounded-2xl border border-slate-200/80 text-slate-400 space-y-2 shadow-2xs">
-                        <History className="w-10 h-10 mx-auto text-slate-300" />
+                      <div className="text-center py-12 bg-white rounded-2xl border border-slate-200/80 text-slate-400 space-y-2 shadow-2xs">
+                        <History className="w-8 h-8 mx-auto text-slate-300" />
                         <p className="text-xs font-semibold">No withdrawal history records found.</p>
                       </div>
                     ) : (
-                      <div className="space-y-3">
+                      <div className="space-y-2">
                         {historyLogs
                           .filter((l) => l.type === 'withdraw')
                           .map((log, idx) => {
@@ -912,27 +912,27 @@ export default function AssetsTab({
                             return (
                               <div
                                 key={log.id || idx}
-                                className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs space-y-2 hover:border-slate-300 transition"
+                                className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs space-y-1.5 hover:border-slate-300 transition"
                               >
                                 <div className="flex justify-between items-center">
-                                  <span className="font-extrabold text-slate-900 text-sm">
+                                  <span className="font-extrabold text-slate-900 text-xs">
                                     Withdrawal {log.currency || 'USDT'}
                                   </span>
                                   <span
-                                    className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${statusColor}`}
+                                    className={`text-[9px] font-extrabold px-2 py-0.5 rounded-full border ${statusColor}`}
                                   >
                                     {statusText}
                                   </span>
                                 </div>
 
-                                <div className="flex justify-between items-baseline pt-1">
-                                  <span className="text-xs text-slate-500 font-medium">Amount:</span>
-                                  <span className="font-mono font-extrabold text-slate-900 text-base">
+                                <div className="flex justify-between items-baseline">
+                                  <span className="text-[11px] text-slate-500 font-medium">Amount:</span>
+                                  <span className="font-mono font-extrabold text-slate-900 text-sm">
                                     -{log.amount} {log.currency || 'USDT'}
                                   </span>
                                 </div>
 
-                                <div className="text-[11px] text-slate-400 font-mono flex items-center justify-between pt-2 border-t border-slate-100">
+                                <div className="text-[10px] text-slate-400 font-mono flex items-center justify-between pt-1 border-t border-slate-100">
                                   <span>{new Date(log.timestamp).toLocaleString()}</span>
                                 </div>
                               </div>
@@ -942,26 +942,27 @@ export default function AssetsTab({
                     )}
                   </div>
                 ) : (
-                  <form onSubmit={handleWithdraw} className="space-y-4">
-                    {/* 1. Currency & Available Balance */}
+                  <form onSubmit={handleWithdraw} className="space-y-3">
+                    {/* Unified Main Card */}
                     <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
+                      {/* Currency Selector & Available balance */}
                       <div className="flex items-center justify-between">
-                        <span className="text-xs text-slate-500 font-bold">Withdraw Asset</span>
+                        <span className="text-xs text-slate-500 font-bold">Asset</span>
                         <div className="relative">
                           <button
                             type="button"
                             onClick={() => setShowWithdrawCurrencyDropdown(!showWithdrawCurrencyDropdown)}
-                            className="flex items-center gap-1.5 font-bold text-slate-800 text-xs bg-slate-50 hover:bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs transition cursor-pointer"
+                            className="flex items-center gap-1.5 font-bold text-slate-800 text-xs bg-slate-50 hover:bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200 shadow-2xs transition cursor-pointer"
                           >
-                            <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] text-white font-bold ${withdrawCurrency.startsWith('USDT') ? 'bg-[#009393]' : 'bg-[#2775ca]'}`}>
+                            <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] text-white font-bold ${withdrawCurrency.startsWith('USDT') ? 'bg-[#009393]' : 'bg-[#2775ca]'}`}>
                               {withdrawCurrency.startsWith('USDT') ? '₮' : '$'}
                             </span>
                             <span>{withdrawCurrency}</span>
-                            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                            <ChevronDown className="w-3 h-3 text-slate-400" />
                           </button>
 
                           {showWithdrawCurrencyDropdown && (
-                            <div className="absolute right-0 top-9 w-44 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 overflow-hidden py-1">
+                            <div className="absolute right-0 top-8 w-36 bg-white border border-slate-200 rounded-xl shadow-xl z-30 overflow-hidden py-1">
                               {['USDT-ETH', 'USDC-ETH'].map((cur) => (
                                 <button
                                   key={cur}
@@ -971,11 +972,11 @@ export default function AssetsTab({
                                     setSelectedCurrency(cur.startsWith('USDT') ? 'USDT' : 'USDC');
                                     setShowWithdrawCurrencyDropdown(false);
                                   }}
-                                  className={`w-full px-3.5 py-2.5 text-left text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition cursor-pointer ${
+                                  className={`w-full px-3 py-2 text-left text-xs font-bold flex items-center gap-1.5 hover:bg-slate-50 transition cursor-pointer ${
                                     withdrawCurrency === cur ? 'text-[#0066ff] bg-blue-50' : 'text-slate-700'
                                   }`}
                                 >
-                                  <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] text-white font-bold ${cur.startsWith('USDT') ? 'bg-[#009393]' : 'bg-[#2775ca]'}`}>
+                                  <span className={`w-3.5 h-3.5 rounded-full flex items-center justify-center text-[9px] text-white font-bold ${cur.startsWith('USDT') ? 'bg-[#009393]' : 'bg-[#2775ca]'}`}>
                                     {cur.startsWith('USDT') ? '₮' : '$'}
                                   </span>
                                   <span>{cur}</span>
@@ -986,10 +987,11 @@ export default function AssetsTab({
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                      {/* Available Balance row */}
+                      <div className="flex items-center justify-between p-2.5 bg-slate-50 rounded-xl border border-slate-100">
                         <div>
-                          <span className="text-[11px] text-slate-400 font-bold block">Available Balance</span>
-                          <span className="font-mono font-extrabold text-lg text-slate-900">
+                          <span className="text-[10px] text-slate-400 font-bold block">Available Balance</span>
+                          <span className="font-mono font-extrabold text-base text-slate-900 leading-tight">
                             {getAvailableBalanceFor(selectedCurrency).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}{' '}
                             <span className="text-xs font-bold text-slate-500">{selectedCurrency}</span>
                           </span>
@@ -997,105 +999,93 @@ export default function AssetsTab({
                         <button
                           type="button"
                           onClick={() => setActionAmount(getAvailableBalanceFor(selectedCurrency).toString())}
-                          className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#0052d4] font-bold text-xs rounded-xl transition cursor-pointer border border-blue-200"
+                          className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-[#0052d4] font-bold text-xs rounded-lg transition cursor-pointer border border-blue-200"
                         >
                           Max All
                         </button>
                       </div>
-                    </div>
 
-                    {/* 2. Withdrawal Amount */}
-                    <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
-                      <label className="block text-xs font-bold text-slate-700">
-                        Withdraw Amount
-                      </label>
-                      <div className="relative">
-                        <input
-                          type="number"
-                          step="any"
-                          value={actionAmount}
-                          onChange={(e) => {
-                            setActionAmount(e.target.value);
-                            setErrorMsg('');
-                          }}
-                          placeholder="0.00"
-                          className="w-full p-3.5 pr-16 bg-slate-50 border border-slate-200 rounded-xl text-lg font-mono font-extrabold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0066ff] focus:bg-white transition"
-                        />
-                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-slate-500 bg-slate-200/80 px-2 py-1 rounded-lg">
-                          {selectedCurrency}
-                        </span>
+                      {/* Withdraw Amount Input */}
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="text-xs font-bold text-slate-700">Withdraw Amount</label>
+                          <span className="text-[10px] text-slate-400">Min: <strong className="text-slate-600">{minWithdrawUSDT} {selectedCurrency}</strong></span>
+                        </div>
+                        <div className="relative">
+                          <input
+                            type="number"
+                            step="any"
+                            value={actionAmount}
+                            onChange={(e) => {
+                              setActionAmount(e.target.value);
+                              setErrorMsg('');
+                            }}
+                            placeholder="0.00"
+                            className="w-full p-2.5 pr-14 bg-slate-50 border border-slate-200 rounded-xl text-base font-mono font-extrabold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0066ff] focus:bg-white transition"
+                          />
+                          <span className="absolute right-2.5 top-1/2 -translate-y-1/2 font-bold text-[11px] text-slate-500 bg-slate-200/80 px-1.5 py-0.5 rounded">
+                            {selectedCurrency}
+                          </span>
+                        </div>
+
+                        {/* Quick Percentages */}
+                        <div className="grid grid-cols-4 gap-1.5 mt-1.5">
+                          {[0.25, 0.5, 0.75, 1.0].map((pct) => {
+                            const avail = getAvailableBalanceFor(selectedCurrency);
+                            const val = (avail * pct).toFixed(2);
+                            return (
+                              <button
+                                key={pct}
+                                type="button"
+                                onClick={() => setActionAmount(val)}
+                                className="py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold transition cursor-pointer border border-slate-200/60"
+                              >
+                                {pct * 100}%
+                              </button>
+                            );
+                          })}
+                        </div>
                       </div>
 
-                      <div className="grid grid-cols-4 gap-2 pt-1">
-                        {[0.25, 0.5, 0.75, 1.0].map((pct) => {
-                          const avail = getAvailableBalanceFor(selectedCurrency);
-                          const val = (avail * pct).toFixed(2);
-                          return (
-                            <button
-                              key={pct}
-                              type="button"
-                              onClick={() => setActionAmount(val)}
-                              className="py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer border border-slate-200/80"
-                            >
-                              {pct * 100}%
-                            </button>
-                          );
-                        })}
+                      {/* Destination Address */}
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-xs font-bold text-slate-700">Destination Address</label>
+                          <span className="text-[9px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded font-bold flex items-center gap-1 border border-emerald-200">
+                            <Check className="w-2.5 h-2.5 text-emerald-600" /> Connected
+                          </span>
+                        </div>
+                        <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-[11px] font-bold text-slate-700 break-all select-all flex items-center justify-between gap-1.5">
+                          <span className="truncate">{connectedAddress || account.walletAddress || withdrawAddressInput}</span>
+                          <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        </div>
                       </div>
 
-                      <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
-                        <span>Minimum withdrawal:</span>
-                        <span className="font-bold text-slate-800">{minWithdrawUSDT} {selectedCurrency}</span>
-                      </div>
-                    </div>
-
-                    {/* 3. Recipient Address */}
-                    <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-2">
-                      <div className="flex items-center justify-between">
-                        <label className="block text-xs font-bold text-slate-700">Destination Address</label>
-                        <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-bold flex items-center gap-1 border border-emerald-200">
-                          <Check className="w-3 h-3 text-emerald-600" /> Connected Wallet
-                        </span>
-                      </div>
-                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs font-bold text-slate-700 break-all select-all flex items-center justify-between gap-2">
-                        <span>{connectedAddress || account.walletAddress || withdrawAddressInput}</span>
-                        <Lock className="w-4 h-4 text-slate-400 shrink-0" />
-                      </div>
-                      <p className="text-[11px] text-slate-400 font-medium">
-                        Funds will be automatically dispatched to your connected Ethereum address.
-                      </p>
-                    </div>
-
-                    {/* 4. Details / Fee Summary */}
-                    <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-2 text-xs">
-                      <div className="flex justify-between text-slate-500">
-                        <span>Handling Fee:</span>
-                        <span className="font-bold text-emerald-600">0% (Free)</span>
-                      </div>
-                      <div className="flex justify-between text-slate-500">
-                        <span>Processing Time:</span>
-                        <span className="font-bold text-slate-700">1 - 5 mins</span>
+                      {/* Fee & Handling Summary */}
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
+                        <span>Handling Fee: <strong className="text-emerald-600 font-bold">0% (Free)</strong></span>
+                        <span>Time: <strong className="text-slate-700 font-bold">1 - 5 mins</strong></span>
                       </div>
                     </div>
 
                     {errorMsg && (
-                      <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2.5 text-left">
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2 text-left">
                         <ShieldAlert className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
                         <p className="text-xs text-red-600 font-bold leading-relaxed">{errorMsg}</p>
                       </div>
                     )}
                     {successMsg && (
-                      <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-2 text-left">
+                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-2 text-left">
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
                         <p className="text-xs text-emerald-700 font-bold leading-relaxed">{successMsg}</p>
                       </div>
                     )}
 
-                    {/* 5. Submit Button */}
+                    {/* Submit Button */}
                     <button
                       type="submit"
                       disabled={loading}
-                      className="w-full py-3.5 bg-[#0052d4] hover:bg-blue-700 text-white font-bold text-sm rounded-xl transition shadow-md shadow-blue-500/20 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                      className="w-full py-3 bg-[#0052d4] hover:bg-blue-700 text-white font-bold text-sm rounded-xl transition shadow-md shadow-blue-500/20 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                       {loading ? (
                         <div className="flex items-center gap-2">
