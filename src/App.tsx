@@ -527,10 +527,16 @@ export default function App() {
       const from = fromCurrency.toUpperCase();
       const to = toCurrency.toUpperCase();
 
+      const savedEth = localStorage.getItem('last_eth_price');
+      const liveEthPrice = savedEth ? parseFloat(savedEth) : 3500;
+      const savedBtc = localStorage.getItem('last_btc_price');
+      const liveBtcPrice = savedBtc ? parseFloat(savedBtc) : 65000;
+
       let available = 0;
       if (from === 'USDT') available = user.usdtBalance || 0;
       else if (from === 'USDC') available = user.usdcBalance || 0;
       else if (from === 'BTC') available = user.btcBalance || 0;
+      else if (from === 'ETH') available = user.ethBalance || 0;
 
       if (available < amount) {
         throw new Error(`Insufficient available ${from} balance.`);
@@ -542,18 +548,22 @@ export default function App() {
       if (from === 'USDT') updated.usdtBalance = (updated.usdtBalance || 0) - amount;
       else if (from === 'USDC') updated.usdcBalance = (updated.usdcBalance || 0) - amount;
       else if (from === 'BTC') updated.btcBalance = (updated.btcBalance || 0) - amount;
+      else if (from === 'ETH') updated.ethBalance = (updated.ethBalance || 0) - amount;
 
-      // Convert to target (USDT=1, USDC=1, BTC=65000)
-      let valueInUSDC = amount;
-      if (from === 'BTC') valueInUSDC = amount * 65000;
+      // Convert to base USD value
+      let valueInUSD = amount;
+      if (from === 'BTC') valueInUSD = amount * liveBtcPrice;
+      else if (from === 'ETH') valueInUSD = amount * liveEthPrice;
 
-      let receivedAmount = valueInUSDC;
-      if (to === 'BTC') receivedAmount = valueInUSDC / 65000;
+      let receivedAmount = valueInUSD;
+      if (to === 'BTC') receivedAmount = valueInUSD / liveBtcPrice;
+      else if (to === 'ETH') receivedAmount = valueInUSD / liveEthPrice;
 
       // Add to target
       if (to === 'USDT') updated.usdtBalance = (updated.usdtBalance || 0) + receivedAmount;
       else if (to === 'USDC') updated.usdcBalance = (updated.usdcBalance || 0) + receivedAmount;
       else if (to === 'BTC') updated.btcBalance = (updated.btcBalance || 0) + receivedAmount;
+      else if (to === 'ETH') updated.ethBalance = (updated.ethBalance || 0) + receivedAmount;
 
       updated.updatedAt = Date.now();
       setUserAccount(updated);
