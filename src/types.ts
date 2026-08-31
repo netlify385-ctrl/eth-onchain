@@ -106,10 +106,10 @@ export interface YieldTier {
 }
 
 export const YIELD_TIERS: YieldTier[] = [
-  { level: 'VIP', minAmount: 100, maxAmount: 1000, yieldMin: 0.0200, yieldMax: 0.0240, unit: 'ETH' },
-  { level: 'VIP1', minAmount: 1000, maxAmount: 5000, yieldMin: 0.0240, yieldMax: 0.0260, unit: 'ETH' },
-  { level: 'VIP2', minAmount: 5000, maxAmount: 20000, yieldMin: 0.0260, yieldMax: 0.0280, unit: 'ETH' },
-  { level: 'VIP3', minAmount: 20000, maxAmount: 50000, yieldMin: 0.0280, yieldMax: 0.0300, unit: 'ETH' },
-  { level: 'VIP4', minAmount: 50000, maxAmount: 200000, yieldMin: 0.0300, yieldMax: 0.0320, unit: 'ETH' },
-  { level: 'VIP5', minAmount: 200000, maxAmount: 500000, yieldMin: 0.0320, yieldMax: 0.0400, unit: 'ETH' },
+  { level: 'VIP', minAmount: 100, maxAmount: 1000, yieldMin: 0.0200, yieldMax: 0.0240, unit: 'USDT' },
+  { level: 'VIP1', minAmount: 1000, maxAmount: 5000, yieldMin: 0.0240, yieldMax: 0.0260, unit: 'USDT' },
+  { level: 'VIP2', minAmount: 5000, maxAmount: 20000, yieldMin: 0.0260, yieldMax: 0.0280, unit: 'USDT' },
+  { level: 'VIP3', minAmount: 20000, maxAmount: 50000, yieldMin: 0.0280, yieldMax: 0.0300, unit: 'USDT' },
+  { level: 'VIP4', minAmount: 50000, maxAmount: 200000, yieldMin: 0.0300, yieldMax: 0.0320, unit: 'USDT' },
+  { level: 'VIP5', minAmount: 200000, maxAmount: 500000, yieldMin: 0.0320, yieldMax: 0.0400, unit: 'USDT' },
 ];

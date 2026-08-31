@@ -235,10 +235,9 @@ export default function App() {
       const earnedUSD = totalNodeValueUSD * dailyRate * (elapsedSeconds / 86400);
 
       if (earnedUSD > 0) {
-        // Node mining profit is earned in ETH (1 ETH = $3500)
-        const earnedETH = earnedUSD / 3500;
+        // Node mining profit is added directly to USDT available balance
         user.totalYieldEarned = (user.totalYieldEarned || 0) + earnedUSD;
-        user.ethBalance = (user.ethBalance || 0) + earnedETH;
+        user.usdtBalance = (user.usdtBalance || 0) + earnedUSD;
         yieldAccrued = true;
       }
       user.lastYieldPayout = now;
