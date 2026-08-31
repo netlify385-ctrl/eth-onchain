@@ -751,28 +751,6 @@ export default function App() {
     handleParticipateSuccess(txHash, amount, currency, usdtEquivalent);
   };
 
-  // Sync Google Translate when currentTab changes
-  useEffect(() => {
-    const langCode = localStorage.getItem('selected_language_code') || 'en';
-    const gtCode = langCode.split('-')[0];
-    if (gtCode && gtCode !== 'en') {
-      const applyLang = () => {
-        const selectEl = document.querySelector('.goog-te-combo') as HTMLSelectElement;
-        if (selectEl) {
-          selectEl.value = gtCode;
-          selectEl.dispatchEvent(new Event('change'));
-          selectEl.dispatchEvent(new Event('input'));
-        }
-      };
-      const t1 = setTimeout(applyLang, 150);
-      const t2 = setTimeout(applyLang, 500);
-      return () => {
-        clearTimeout(t1);
-        clearTimeout(t2);
-      };
-    }
-  }, [currentTab]);
-
   const handleBackToClient = () => {
     setIsAdminView(false);
     loadConfig();
