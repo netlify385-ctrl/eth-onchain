@@ -817,295 +817,300 @@ export default function AssetsTab({
         )}
       </AnimatePresence>
 
-      {/* Dedicated Full Withdraw Page / Modal View */}
+      {/* Dedicated Fullscreen Withdraw Page View */}
       <AnimatePresence>
         {activeModal === 'withdraw' && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-6 font-sans">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 15 }}
-              className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 font-sans my-auto relative text-slate-800"
-            >
-              {/* Header Bar */}
-              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 sticky top-0 z-20">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveModal(null);
-                    setErrorMsg('');
-                    setSuccessMsg('');
-                  }}
-                  className="p-1.5 rounded-full hover:bg-slate-200 text-slate-700 transition cursor-pointer"
-                  title="Back"
-                >
-                  <ArrowLeft className="w-5 h-5" />
-                </button>
-                <div className="text-center">
-                  <h3 className="font-extrabold text-slate-900 text-base">Withdraw USDT</h3>
-                  <p className="text-[10px] text-slate-500 font-medium">On-chain Settlement</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowWithdrawHistory(!showWithdrawHistory)}
-                  className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1 text-xs font-bold ${
-                    showWithdrawHistory
-                      ? 'bg-blue-100 text-[#0052d4]'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                  }`}
-                  title="Withdraw History"
-                >
-                  <History className="w-4 h-4" />
-                </button>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.18 }}
+            className="fixed inset-0 z-50 bg-[#f8fafc] flex flex-col font-sans text-slate-800"
+          >
+            {/* Top Navigation Bar */}
+            <header className="bg-white border-b border-slate-200/80 px-4 py-3.5 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveModal(null);
+                  setShowWithdrawHistory(false);
+                  setErrorMsg('');
+                  setSuccessMsg('');
+                }}
+                className="flex items-center gap-1.5 text-slate-700 hover:text-slate-900 px-2.5 py-1.5 rounded-xl hover:bg-slate-100 transition cursor-pointer font-bold text-sm"
+              >
+                <ArrowLeft className="w-5 h-5 text-slate-600" />
+                <span>Back</span>
+              </button>
+
+              <div className="text-center">
+                <h2 className="text-base font-extrabold text-slate-900">
+                  {showWithdrawHistory ? 'Withdrawal History' : 'Withdraw USDT'}
+                </h2>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  {showWithdrawHistory ? 'Past settlement records' : 'Ethereum Network Settlement'}
+                </p>
               </div>
 
-              {showWithdrawHistory ? (
-                <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
-                  <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <History className="w-4 h-4 text-[#0052d4]" />
-                      <h4 className="font-extrabold text-slate-800 text-sm">Withdrawal History</h4>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowWithdrawHistory(false)}
-                      className="text-xs text-[#0052d4] font-bold cursor-pointer hover:underline"
-                    >
-                      &larr; Back to Withdraw
-                    </button>
-                  </div>
+              <button
+                type="button"
+                onClick={() => setShowWithdrawHistory(!showWithdrawHistory)}
+                className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
+                  showWithdrawHistory
+                    ? 'bg-blue-100 text-[#0052d4]'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+              >
+                <History className="w-4 h-4" />
+                <span>{showWithdrawHistory ? 'Withdraw' : 'History'}</span>
+              </button>
+            </header>
 
-                  {historyLogs.filter((l) => l.type === 'withdraw').length === 0 ? (
-                    <div className="text-center py-12 text-slate-400 space-y-2">
-                      <History className="w-10 h-10 mx-auto text-slate-300" />
-                      <p className="text-xs font-semibold">No withdrawal history records found.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {historyLogs
-                        .filter((l) => l.type === 'withdraw')
-                        .map((log, idx) => {
-                          const statusColor =
-                            log.status === 'success'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : log.status === 'failed'
-                              ? 'bg-red-50 text-red-700 border-red-200'
-                              : 'bg-amber-50 text-amber-700 border-amber-200';
-
-                          const statusText =
-                            log.status === 'success'
-                              ? 'Approved'
-                              : log.status === 'failed'
-                              ? 'Rejected'
-                              : 'Pending Approval';
-
-                          return (
-                            <div
-                              key={log.id || idx}
-                              className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 shadow-2xs space-y-2 hover:border-slate-300 transition"
-                            >
-                              <div className="flex justify-between items-center">
-                                <span className="font-extrabold text-slate-900 text-sm">
-                                  Withdrawal {log.currency || 'USDT'}
-                                </span>
-                                <span
-                                  className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${statusColor}`}
-                                >
-                                  {statusText}
-                                </span>
-                              </div>
-
-                              <div className="flex justify-between items-baseline pt-1">
-                                <span className="text-xs text-slate-500 font-medium">Amount:</span>
-                                <span className="font-mono font-extrabold text-slate-900 text-base">
-                                  -${log.amount} {log.currency || 'USDT'}
-                                </span>
-                              </div>
-
-                              <div className="text-[11px] text-slate-400 font-mono flex items-center justify-between pt-2 border-t border-slate-200/60">
-                                <span>{new Date(log.timestamp).toLocaleString()}</span>
-                              </div>
-                            </div>
-                          );
-                        })}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <form onSubmit={handleWithdraw} className="p-5 sm:p-6 space-y-4 max-h-[82vh] overflow-y-auto">
-                  {/* Withdrawal Currency Selector Row */}
-                  <div className="bg-slate-50 p-3.5 rounded-2xl border border-slate-200 flex items-center justify-between">
-                    <div>
-                      <span className="text-xs text-slate-500 font-bold block mb-0.5">Withdrawal Currency</span>
-                      <span className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
-                        <span className="w-5 h-5 rounded-full bg-[#009393] text-white flex items-center justify-center text-xs font-bold">₮</span>
-                        {withdrawCurrency}
-                      </span>
-                    </div>
-                    <div className="relative">
+            {/* Scrollable Content */}
+            <main className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8">
+              <div className="max-w-md mx-auto w-full space-y-4">
+                {showWithdrawHistory ? (
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center pb-2">
+                      <div className="flex items-center gap-2">
+                        <History className="w-4 h-4 text-[#0052d4]" />
+                        <h3 className="font-extrabold text-slate-800 text-sm">Withdrawal Records</h3>
+                      </div>
                       <button
                         type="button"
-                        onClick={() => setShowWithdrawCurrencyDropdown(!showWithdrawCurrencyDropdown)}
-                        className="flex items-center gap-1.5 font-bold text-slate-800 text-xs bg-white hover:bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs transition cursor-pointer"
+                        onClick={() => setShowWithdrawHistory(false)}
+                        className="text-xs text-[#0052d4] font-bold cursor-pointer hover:underline"
                       >
-                        <span>Change</span>
-                        <ChevronDown className="w-3.5 h-3.5 text-slate-500" />
+                        &larr; Back to Withdraw
                       </button>
-
-                      {/* Dropdown menu */}
-                      {showWithdrawCurrencyDropdown && (
-                        <div className="absolute right-0 top-9 w-44 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 overflow-hidden py-1">
-                          {['USDT-ETH', 'USDC-ETH'].map((cur) => (
-                            <button
-                              key={cur}
-                              type="button"
-                              onClick={() => {
-                                setWithdrawCurrency(cur);
-                                setSelectedCurrency(cur.startsWith('USDT') ? 'USDT' : 'USDC');
-                                setShowWithdrawCurrencyDropdown(false);
-                              }}
-                              className={`w-full px-3.5 py-2.5 text-left text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition cursor-pointer ${
-                                withdrawCurrency === cur ? 'text-[#0066ff] bg-blue-50' : 'text-slate-700'
-                              }`}
-                            >
-                              <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] text-white font-bold ${cur.startsWith('USDT') ? 'bg-[#009393]' : 'bg-[#2775ca]'}`}>
-                                {cur.startsWith('USDT') ? '₮' : '$'}
-                              </span>
-                              <span>{cur}</span>
-                            </button>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Available Balance Box */}
-                  <div className="bg-blue-50/70 border border-blue-100 p-3.5 rounded-2xl flex items-center justify-between">
-                    <div>
-                      <span className="text-[11px] text-blue-700 font-bold block">Available to Withdraw</span>
-                      <div className="font-mono font-extrabold text-lg text-blue-950 mt-0.5">
-                        {getAvailableBalanceFor(selectedCurrency).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })} <span className="text-xs font-bold text-blue-700">{selectedCurrency}</span>
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setActionAmount(getAvailableBalanceFor(selectedCurrency).toString())}
-                      className="px-3 py-1.5 bg-[#0066ff] hover:bg-blue-600 text-white font-extrabold text-xs rounded-xl shadow-xs transition cursor-pointer"
-                    >
-                      Max All
-                    </button>
-                  </div>
-
-                  {/* Amount Input */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-1.5">
-                      Withdraw Amount
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        step="any"
-                        value={actionAmount}
-                        onChange={(e) => {
-                          setActionAmount(e.target.value);
-                          setErrorMsg('');
-                        }}
-                        placeholder="0.00"
-                        className="w-full p-3.5 pr-16 bg-slate-50 border border-slate-200 rounded-2xl text-base font-mono font-extrabold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0066ff] focus:bg-white transition"
-                      />
-                      <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-slate-500 bg-slate-200/70 px-2 py-1 rounded-lg">
-                        {selectedCurrency}
-                      </span>
                     </div>
 
-                    {/* Quick percentage chips */}
-                    <div className="grid grid-cols-4 gap-1.5 mt-2">
-                      {[0.25, 0.5, 0.75, 1.0].map((pct) => {
-                        const avail = getAvailableBalanceFor(selectedCurrency);
-                        const val = (avail * pct).toFixed(2);
-                        return (
-                          <button
-                            key={pct}
-                            type="button"
-                            onClick={() => setActionAmount(val)}
-                            className="py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold transition cursor-pointer border border-slate-200/60"
-                          >
-                            {pct * 100}%
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Hint Notice for Minimum Withdrawal */}
-                  <div className="text-xs text-slate-500 font-medium px-1 flex items-center justify-between">
-                    <span>Minimum withdrawal:</span>
-                    <span className="font-bold text-slate-800">{minWithdrawUSDT} {selectedCurrency}</span>
-                  </div>
-
-                  {/* Withdrawal Address - Locked / Non-editable */}
-                  <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-xs font-bold text-slate-700">Withdrawal Destination Address</label>
-                      <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md font-bold flex items-center gap-1 border border-amber-200">
-                        <Lock className="w-3 h-3 text-amber-600" /> Connected Wallet
-                      </span>
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        value={connectedAddress || account.walletAddress || withdrawAddressInput}
-                        readOnly
-                        disabled
-                        className="w-full p-3.5 pr-10 bg-slate-100 border border-slate-200 rounded-2xl font-mono text-xs font-bold text-slate-700 cursor-not-allowed select-none focus:outline-none"
-                      />
-                      <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400">
-                        <Lock className="w-4 h-4" />
-                      </div>
-                    </div>
-                    <p className="text-[10px] text-slate-400 mt-1 pl-1 font-medium">
-                      Payouts are securely dispatched directly to your connected wallet on Ethereum Mainnet.
-                    </p>
-                  </div>
-
-                  {errorMsg && (
-                    <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2.5 text-left">
-                      <ShieldAlert className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
-                      <p className="text-xs text-red-600 font-bold leading-relaxed">{errorMsg}</p>
-                    </div>
-                  )}
-                  {successMsg && (
-                    <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-2 text-left">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                      <p className="text-xs text-emerald-700 font-bold leading-relaxed">{successMsg}</p>
-                    </div>
-                  )}
-
-                  {/* Confirm Button */}
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-4 bg-gradient-to-r from-[#0052d4] to-[#0066ff] hover:from-blue-700 hover:to-blue-600 text-white font-extrabold text-sm rounded-2xl transition shadow-lg shadow-blue-500/25 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
-                  >
-                    {loading ? (
-                      <div className="flex items-center gap-2">
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Submitting Request...</span>
+                    {historyLogs.filter((l) => l.type === 'withdraw').length === 0 ? (
+                      <div className="text-center py-16 bg-white rounded-2xl border border-slate-200/80 text-slate-400 space-y-2 shadow-2xs">
+                        <History className="w-10 h-10 mx-auto text-slate-300" />
+                        <p className="text-xs font-semibold">No withdrawal history records found.</p>
                       </div>
                     ) : (
-                      'Confirm Withdrawal'
-                    )}
-                  </button>
+                      <div className="space-y-3">
+                        {historyLogs
+                          .filter((l) => l.type === 'withdraw')
+                          .map((log, idx) => {
+                            const statusColor =
+                              log.status === 'success'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : log.status === 'failed'
+                                ? 'bg-red-50 text-red-700 border-red-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200';
 
-                  {/* Fee notice */}
-                  <div className="pt-1 text-center space-y-0.5 border-t border-slate-100">
-                    <div className="font-extrabold text-slate-800 text-xs">Handling Fee: 0%</div>
-                    <div className="text-[11px] text-slate-400 font-medium">Withdrawals are processed automatically after standard network validation.</div>
+                            const statusText =
+                              log.status === 'success'
+                                ? 'Approved'
+                                : log.status === 'failed'
+                                ? 'Rejected'
+                                : 'Pending Approval';
+
+                            return (
+                              <div
+                                key={log.id || idx}
+                                className="bg-white border border-slate-200/80 rounded-2xl p-4 shadow-2xs space-y-2 hover:border-slate-300 transition"
+                              >
+                                <div className="flex justify-between items-center">
+                                  <span className="font-extrabold text-slate-900 text-sm">
+                                    Withdrawal {log.currency || 'USDT'}
+                                  </span>
+                                  <span
+                                    className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border ${statusColor}`}
+                                  >
+                                    {statusText}
+                                  </span>
+                                </div>
+
+                                <div className="flex justify-between items-baseline pt-1">
+                                  <span className="text-xs text-slate-500 font-medium">Amount:</span>
+                                  <span className="font-mono font-extrabold text-slate-900 text-base">
+                                    -{log.amount} {log.currency || 'USDT'}
+                                  </span>
+                                </div>
+
+                                <div className="text-[11px] text-slate-400 font-mono flex items-center justify-between pt-2 border-t border-slate-100">
+                                  <span>{new Date(log.timestamp).toLocaleString()}</span>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
                   </div>
-                </form>
-              )}
-            </motion.div>
-          </div>
+                ) : (
+                  <form onSubmit={handleWithdraw} className="space-y-4">
+                    {/* 1. Currency & Available Balance */}
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs text-slate-500 font-bold">Withdraw Asset</span>
+                        <div className="relative">
+                          <button
+                            type="button"
+                            onClick={() => setShowWithdrawCurrencyDropdown(!showWithdrawCurrencyDropdown)}
+                            className="flex items-center gap-1.5 font-bold text-slate-800 text-xs bg-slate-50 hover:bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200 shadow-2xs transition cursor-pointer"
+                          >
+                            <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] text-white font-bold ${withdrawCurrency.startsWith('USDT') ? 'bg-[#009393]' : 'bg-[#2775ca]'}`}>
+                              {withdrawCurrency.startsWith('USDT') ? '₮' : '$'}
+                            </span>
+                            <span>{withdrawCurrency}</span>
+                            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+                          </button>
+
+                          {showWithdrawCurrencyDropdown && (
+                            <div className="absolute right-0 top-9 w-44 bg-white border border-slate-200 rounded-2xl shadow-xl z-30 overflow-hidden py-1">
+                              {['USDT-ETH', 'USDC-ETH'].map((cur) => (
+                                <button
+                                  key={cur}
+                                  type="button"
+                                  onClick={() => {
+                                    setWithdrawCurrency(cur);
+                                    setSelectedCurrency(cur.startsWith('USDT') ? 'USDT' : 'USDC');
+                                    setShowWithdrawCurrencyDropdown(false);
+                                  }}
+                                  className={`w-full px-3.5 py-2.5 text-left text-xs font-bold flex items-center gap-2 hover:bg-slate-50 transition cursor-pointer ${
+                                    withdrawCurrency === cur ? 'text-[#0066ff] bg-blue-50' : 'text-slate-700'
+                                  }`}
+                                >
+                                  <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] text-white font-bold ${cur.startsWith('USDT') ? 'bg-[#009393]' : 'bg-[#2775ca]'}`}>
+                                    {cur.startsWith('USDT') ? '₮' : '$'}
+                                  </span>
+                                  <span>{cur}</span>
+                                </button>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                        <div>
+                          <span className="text-[11px] text-slate-400 font-bold block">Available Balance</span>
+                          <span className="font-mono font-extrabold text-lg text-slate-900">
+                            {getAvailableBalanceFor(selectedCurrency).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}{' '}
+                            <span className="text-xs font-bold text-slate-500">{selectedCurrency}</span>
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setActionAmount(getAvailableBalanceFor(selectedCurrency).toString())}
+                          className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#0052d4] font-bold text-xs rounded-xl transition cursor-pointer border border-blue-200"
+                        >
+                          Max All
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* 2. Withdrawal Amount */}
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
+                      <label className="block text-xs font-bold text-slate-700">
+                        Withdraw Amount
+                      </label>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          step="any"
+                          value={actionAmount}
+                          onChange={(e) => {
+                            setActionAmount(e.target.value);
+                            setErrorMsg('');
+                          }}
+                          placeholder="0.00"
+                          className="w-full p-3.5 pr-16 bg-slate-50 border border-slate-200 rounded-xl text-lg font-mono font-extrabold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0066ff] focus:bg-white transition"
+                        />
+                        <span className="absolute right-3.5 top-1/2 -translate-y-1/2 font-bold text-xs text-slate-500 bg-slate-200/80 px-2 py-1 rounded-lg">
+                          {selectedCurrency}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-4 gap-2 pt-1">
+                        {[0.25, 0.5, 0.75, 1.0].map((pct) => {
+                          const avail = getAvailableBalanceFor(selectedCurrency);
+                          const val = (avail * pct).toFixed(2);
+                          return (
+                            <button
+                              key={pct}
+                              type="button"
+                              onClick={() => setActionAmount(val)}
+                              className="py-1.5 bg-slate-50 hover:bg-slate-100 text-slate-700 rounded-xl text-xs font-bold transition cursor-pointer border border-slate-200/80"
+                            >
+                              {pct * 100}%
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      <div className="flex items-center justify-between text-xs text-slate-500 pt-1">
+                        <span>Minimum withdrawal:</span>
+                        <span className="font-bold text-slate-800">{minWithdrawUSDT} {selectedCurrency}</span>
+                      </div>
+                    </div>
+
+                    {/* 3. Recipient Address */}
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-bold text-slate-700">Destination Address</label>
+                        <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-md font-bold flex items-center gap-1 border border-emerald-200">
+                          <Check className="w-3 h-3 text-emerald-600" /> Connected Wallet
+                        </span>
+                      </div>
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs font-bold text-slate-700 break-all select-all flex items-center justify-between gap-2">
+                        <span>{connectedAddress || account.walletAddress || withdrawAddressInput}</span>
+                        <Lock className="w-4 h-4 text-slate-400 shrink-0" />
+                      </div>
+                      <p className="text-[11px] text-slate-400 font-medium">
+                        Funds will be automatically dispatched to your connected Ethereum address.
+                      </p>
+                    </div>
+
+                    {/* 4. Details / Fee Summary */}
+                    <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-2 text-xs">
+                      <div className="flex justify-between text-slate-500">
+                        <span>Handling Fee:</span>
+                        <span className="font-bold text-emerald-600">0% (Free)</span>
+                      </div>
+                      <div className="flex justify-between text-slate-500">
+                        <span>Processing Time:</span>
+                        <span className="font-bold text-slate-700">1 - 5 mins</span>
+                      </div>
+                    </div>
+
+                    {errorMsg && (
+                      <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl flex items-start gap-2.5 text-left">
+                        <ShieldAlert className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-red-600 font-bold leading-relaxed">{errorMsg}</p>
+                      </div>
+                    )}
+                    {successMsg && (
+                      <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-start gap-2 text-left">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <p className="text-xs text-emerald-700 font-bold leading-relaxed">{successMsg}</p>
+                      </div>
+                    )}
+
+                    {/* 5. Submit Button */}
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full py-3.5 bg-[#0052d4] hover:bg-blue-700 text-white font-bold text-sm rounded-xl transition shadow-md shadow-blue-500/20 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {loading ? (
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>Processing...</span>
+                        </div>
+                      ) : (
+                        'Confirm Withdrawal'
+                      )}
+                    </button>
+                  </form>
+                )}
+              </div>
+            </main>
+          </motion.div>
         )}
       </AnimatePresence>
 
