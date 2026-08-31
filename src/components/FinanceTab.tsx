@@ -347,7 +347,7 @@ export default function FinanceTab({ userAccount, config, onDisconnectClick, onP
                         </td>
                         {idx === 0 && (
                           <td rowSpan={activeTiers.length} className="py-1.5 px-2 sm:py-2 sm:px-3 text-slate-800 font-bold align-middle bg-white whitespace-nowrap text-[11px] sm:text-xs border-slate-400">
-                            ETH
+                            {activeTiers[0]?.unit || 'USDT'}
                           </td>
                         )}
                       </tr>
@@ -499,7 +499,7 @@ export default function FinanceTab({ userAccount, config, onDisconnectClick, onP
                         </td>
                         {idx === 0 && (
                           <td rowSpan={activeTiers.length} className="py-1.5 px-2 sm:py-2 sm:px-3 text-slate-800 font-bold align-middle bg-white whitespace-nowrap text-[11px] sm:text-xs border-slate-400">
-                            ETH
+                            {activeTiers[0]?.unit || 'USDT'}
                           </td>
                         )}
                       </tr>
