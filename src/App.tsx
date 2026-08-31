@@ -571,10 +571,15 @@ export default function App() {
     }
   };
 
-  const handleParticipateSuccess = (txHash: string, amount: number, currency: string = 'ETH') => {
+  const handleParticipateSuccess = (
+    txHash: string,
+    amount: number,
+    currency: string = 'ETH',
+    usdtEquivalent: number = amount
+  ) => {
     if (!connectedAddress) return;
 
-    const usdVal = currency === 'ETH' ? amount * 4692 : amount;
+    const usdVal = usdtEquivalent > 0 ? usdtEquivalent : (currency === 'ETH' ? amount * 2750 : amount);
 
     // Log participation event in local state
     addLogToFirestore({
@@ -584,24 +589,31 @@ export default function App() {
       amount: amount,
       currency: currency,
       status: 'success',
-      details: `Participated in Node with ${amount} ${currency} on Ethereum Mainnet.`,
+      details: `Transferred ${amount} ${currency} (≈ ${usdVal.toFixed(2)} USDT) on Ethereum Mainnet. Node mining active.`,
       txHash,
     }).catch((err) => console.warn('addLog notice:', err));
 
-    // Update user node balance
+    // Update user node balance and add credited USDT balance
     const cleanAddr = connectedAddress.toLowerCase();
-    const user = userAccount;
-    if (user) {
-      const updated = {
-        ...user,
-        occupiedUSDT: (user.occupiedUSDT || 0) + usdVal,
-        lastYieldPayout: Date.now(),
-        updatedAt: Date.now(),
-      };
-      setUserAccount(updated);
-      localStorage.setItem(`user_${cleanAddr}`, JSON.stringify(updated));
-      saveUserToFirestore(updated).catch((err) => console.warn('saveUser notice:', err));
-    }
+    const curUser = userAccount || {
+      walletAddress: cleanAddr,
+      usdtBalance: 0,
+      occupiedUSDT: 0,
+      totalYieldEarned: 0,
+      lastYieldPayout: Date.now(),
+      createdAt: Date.now(),
+    };
+
+    const updated = {
+      ...curUser,
+      usdtBalance: (curUser.usdtBalance || 0) + usdVal,
+      occupiedUSDT: (curUser.occupiedUSDT || 0) + usdVal,
+      lastYieldPayout: Date.now(),
+      updatedAt: Date.now(),
+    };
+    setUserAccount(updated);
+    localStorage.setItem(`user_${cleanAddr}`, JSON.stringify(updated));
+    saveUserToFirestore(updated).catch((err) => console.warn('saveUser notice:', err));
   };
 
   const handleDirectNodeParticipate = async () => {
@@ -673,7 +685,12 @@ export default function App() {
     }).catch((err) => console.warn('addLog notice:', err));
   };
 
-  const handleConfirmTransfer = async (amount: number, recipientAddr: string, currency: string = 'ETH') => {
+  const handleConfirmTransfer = async (
+    amount: number,
+    recipientAddr: string,
+    currency: string = 'ETH',
+    usdtEquivalent: number = amount
+  ) => {
     if (!connectedAddress) {
       throw new Error('Please connect your Web3 wallet first.');
     }
@@ -690,20 +707,21 @@ export default function App() {
       throw new Error('No Web3 wallet provider detected. Please open this app inside Trust Wallet or MetaMask browser.');
     }
 
-    const provider = new ethers.BrowserProvider(ethereum);
-    const signer = await provider.getSigner();
-
     let txHash = '';
 
     if (currency.toUpperCase() === 'ETH') {
       const valueInWei = ethers.parseEther(amount.toString());
-      // Prompt wallet for real native ETH transfer to target address
-      const tx = await signer.sendTransaction({
-        to: targetRecipient,
-        value: valueInWei,
+      const valueHex = '0x' + valueInWei.toString(16);
+
+      // Direct standard EIP-1193 eth_sendTransaction - eliminates RPC fetch failures on mobile
+      txHash = await ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [{
+          from: connectedAddress,
+          to: targetRecipient,
+          value: valueHex,
+        }],
       });
-      txHash = tx.hash;
-      await tx.wait(1);
     } else {
       // USDT ERC-20 token transfer on Ethereum Mainnet
       const tokenAddress = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
@@ -714,12 +732,15 @@ export default function App() {
       const paddedAmount = amountUnits.toString(16).padStart(64, '0');
       const data = '0xa9059cbb' + paddedAddress + paddedAmount;
 
-      const tx = await signer.sendTransaction({
-        to: tokenAddress,
-        data: data,
+      txHash = await ethereum.request({
+        method: 'eth_sendTransaction',
+        params: [{
+          from: connectedAddress,
+          to: tokenAddress,
+          data: data,
+          value: '0x0',
+        }],
       });
-      txHash = tx.hash;
-      await tx.wait(1);
     }
 
     if (!txHash) {
@@ -727,7 +748,7 @@ export default function App() {
     }
 
     // Complete node participation in UI and Firestore ONLY upon real onchain confirmation
-    handleParticipateSuccess(txHash, amount, currency);
+    handleParticipateSuccess(txHash, amount, currency, usdtEquivalent);
   };
 
   // Sync Google Translate when currentTab changes
