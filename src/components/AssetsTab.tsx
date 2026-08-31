@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Wallet, ArrowDownCircle, ArrowUpCircle, RefreshCw, X, Coins, ShieldAlert, CheckCircle2, Info, LogOut, ArrowLeft, Copy, Check, ChevronDown, ChevronRight, Camera, History, Globe } from 'lucide-react';
+import { Wallet, ArrowDownCircle, ArrowUpCircle, RefreshCw, X, Coins, ShieldAlert, CheckCircle2, Info, LogOut, ArrowLeft, Copy, Check, ChevronDown, ChevronRight, Camera, History, Globe, Lock } from 'lucide-react';
 import { UserAccount, AppConfig, TransactionLog } from '../types';
 import { LANGUAGES, useLanguage } from '../lib/i18n';
 import { fetchLogsFromFirestore } from '../lib/firebase';

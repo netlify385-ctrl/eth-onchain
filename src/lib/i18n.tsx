@@ -906,38 +906,6 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
   });
   const [refreshKey, setRefreshKey] = useState<number>(0);
 
-  const syncGoogleTranslate = (code: string) => {
-    const gtCode = code ? code.split('-')[0] : 'en';
-
-    // Set cookies
-    try {
-      if (gtCode === 'en') {
-        document.cookie = 'googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-        document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${window.location.hostname}`;
-        document.cookie = 'googtrans=/en/en; path=/;';
-      } else {
-        const cookieVal = `/en/${gtCode}`;
-        document.cookie = `googtrans=${cookieVal}; path=/; domain=${window.location.hostname}`;
-        document.cookie = `googtrans=${cookieVal}; path=/`;
-      }
-    } catch {
-      // Ignore cookie errors
-    }
-
-    // Trigger select element with multiple attempt timeouts
-    const triggerSelect = () => {
-      const selectEl = document.querySelector('.goog-te-combo') as HTMLSelectElement;
-      if (selectEl) {
-        selectEl.value = gtCode;
-        selectEl.dispatchEvent(new Event('change'));
-        selectEl.dispatchEvent(new Event('input'));
-      }
-    };
-
-    triggerSelect();
-    [100, 300, 600, 1200, 2000].forEach((delay) => setTimeout(triggerSelect, delay));
-  };
-
   const setLanguage = (code: string, name: string) => {
     setLangCode(code);
     setLangName(name);
@@ -946,11 +914,10 @@ export const LanguageProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem('selected_language_code', code);
     localStorage.setItem('selected_language_name', name);
 
-    syncGoogleTranslate(code);
-
     // Dispatch global event
     window.dispatchEvent(new CustomEvent('appLanguageChanged', { detail: { code, name } }));
   };
+
 
   // Listen for storage or custom events across frames
   useEffect(() => {
