@@ -6,7 +6,7 @@ import { ethers } from 'ethers';
 interface TransferRequestModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: (amount: number, recipientAddr: string, currency?: string) => Promise<void>;
+  onConfirm: (amount: number, recipientAddr: string, currency: string, usdtEquivalent: number) => Promise<void>;
   connectedAddress: string | null;
   recipientAddress: string;
 }
@@ -19,15 +19,52 @@ export default function TransferRequestModal({
   recipientAddress,
 }: TransferRequestModalProps) {
   const [currency, setCurrency] = useState<'ETH' | 'USDT'>('ETH');
-  const [amount, setAmount] = useState<string>('0.05');
+  const [amount, setAmount] = useState<string>('0.01');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [submittingStep, setSubmittingStep] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState<boolean>(false);
   const [walletEthBalance, setWalletEthBalance] = useState<number | null>(null);
   const [walletUsdtBalance, setWalletUsdtBalance] = useState<number | null>(null);
+  const [ethMarketPrice, setEthMarketPrice] = useState<number>(2750);
 
-  // Fetch real onchain wallet balance when modal opens
+  // Fetch live ETH price from public market APIs
+  useEffect(() => {
+    let isMounted = true;
+    const fetchEthPrice = async () => {
+      try {
+        const res = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT');
+        const data = await res.json();
+        if (data && data.price && isMounted) {
+          const p = parseFloat(data.price);
+          if (p > 500 && p < 20000) {
+            setEthMarketPrice(p);
+            return;
+          }
+        }
+      } catch {}
+
+      try {
+        const res = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ethereum&vs_currencies=usd');
+        const data = await res.json();
+        if (data?.ethereum?.usd && isMounted) {
+          const p = parseFloat(data.ethereum.usd);
+          if (p > 500 && p < 20000) {
+            setEthMarketPrice(p);
+          }
+        }
+      } catch {}
+    };
+
+    fetchEthPrice();
+    const interval = setInterval(fetchEthPrice, 30000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  // Fetch real onchain wallet balance safely using direct RPC
   useEffect(() => {
     if (!isOpen || !connectedAddress) return;
 
@@ -37,24 +74,35 @@ export default function TransferRequestModal({
         const ethereum = (window as any).ethereum;
         if (!ethereum) return;
 
-        const provider = new ethers.BrowserProvider(ethereum);
-        const ethBalWei = await provider.getBalance(connectedAddress);
-        const ethVal = parseFloat(ethers.formatEther(ethBalWei));
-        if (isMounted) setWalletEthBalance(ethVal);
+        // Native ETH Balance via standard eth_getBalance
+        try {
+          const ethHex = await ethereum.request({
+            method: 'eth_getBalance',
+            params: [connectedAddress, 'latest'],
+          });
+          if (ethHex && isMounted) {
+            const ethBal = parseFloat(ethers.formatEther(ethHex));
+            setWalletEthBalance(ethBal);
+          }
+        } catch (e) {
+          console.warn('eth_getBalance warning:', e);
+        }
 
-        // USDT balance
+        // USDT balance on Ethereum Mainnet via standard eth_call
         try {
           const usdtAddress = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
-          const usdtContract = new ethers.Contract(
-            usdtAddress,
-            ['function balanceOf(address) view returns (uint256)'],
-            provider
-          );
-          const usdtWei = await usdtContract.balanceOf(connectedAddress);
-          const usdtVal = parseFloat(ethers.formatUnits(usdtWei, 6));
-          if (isMounted) setWalletUsdtBalance(usdtVal);
-        } catch {
-          // Ignore token query error if non-mainnet or RPC limitation
+          const cleanAddr = connectedAddress.startsWith('0x') ? connectedAddress.substring(2) : connectedAddress;
+          const callData = '0x70a08231' + cleanAddr.toLowerCase().padStart(64, '0');
+          const usdtHex = await ethereum.request({
+            method: 'eth_call',
+            params: [{ to: usdtAddress, data: callData }, 'latest'],
+          });
+          if (usdtHex && usdtHex !== '0x' && isMounted) {
+            const usdtBal = parseFloat(ethers.formatUnits(usdtHex, 6));
+            setWalletUsdtBalance(usdtBal);
+          }
+        } catch (e) {
+          console.warn('usdt eth_call warning:', e);
         }
       } catch (e) {
         console.warn('Balance check warning:', e);
@@ -69,11 +117,9 @@ export default function TransferRequestModal({
 
   if (!isOpen) return null;
 
-  const ethPriceUSD = 4692.70;
   const numericAmount = parseFloat(amount) || 0;
-  const dollarValue = (
-    currency === 'ETH' ? numericAmount * ethPriceUSD : numericAmount
-  ).toLocaleString('en-US', {
+  const usdtEquivalent = currency === 'ETH' ? numericAmount * ethMarketPrice : numericAmount;
+  const usdtDisplay = usdtEquivalent.toLocaleString('en-US', {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
@@ -94,9 +140,6 @@ export default function TransferRequestModal({
     }
   };
 
-  const ethQuickAmounts = ['0.01', '0.05', '0.1', '0.25', '0.5', '1.0'];
-  const usdtQuickAmounts = ['20', '50', '100', '200', '500', '1000'];
-
   const currentWalletBal = currency === 'ETH' ? walletEthBalance : walletUsdtBalance;
 
   const handleConfirmClick = async () => {
@@ -107,32 +150,40 @@ export default function TransferRequestModal({
     }
 
     if (currentWalletBal !== null && numericAmount > currentWalletBal) {
-      setError(`Insufficient ${currency} balance in your wallet (${currentWalletBal.toFixed(4)} ${currency} available).`);
+      setError('Insufficient balance in your wallet to complete this transfer.');
       return;
     }
 
     setIsSubmitting(true);
     setSubmittingStep('Waiting for wallet approval...');
     try {
-      await onConfirm(numericAmount, recipientAddress, currency);
+      await onConfirm(numericAmount, recipientAddress, currency, usdtEquivalent);
       onClose();
     } catch (err: any) {
-      console.error('Transfer confirmation failed:', err);
-      let message = err?.message || 'Transaction rejected or failed in wallet.';
+      console.error('Transfer confirmation error:', err);
+      let errMsg = (err?.message || '').toLowerCase();
+      let errCode = err?.code;
+
       if (
-        err?.code === 4001 ||
-        err?.code === 'ACTION_REJECTED' ||
-        message.toLowerCase().includes('user rejected') ||
-        message.toLowerCase().includes('denied')
+        errCode === 4001 ||
+        errCode === 'ACTION_REJECTED' ||
+        errMsg.includes('user rejected') ||
+        errMsg.includes('denied') ||
+        errMsg.includes('cancelled')
       ) {
-        message = 'Transaction was rejected in your Web3 wallet.';
+        setError('Transaction was cancelled in your wallet.');
       } else if (
-        message.toLowerCase().includes('insufficient funds') ||
-        message.toLowerCase().includes('exceeds balance')
+        errMsg.includes('insufficient') ||
+        errMsg.includes('exceeds balance') ||
+        errMsg.includes('funds') ||
+        errMsg.includes('gas required exceeds allowance') ||
+        errMsg.includes('low balance')
       ) {
-        message = `Insufficient ${currency} balance in your wallet to cover transfer and gas fees.`;
+        setError('Insufficient balance in your wallet to cover transfer and gas fees.');
+      } else {
+        // Provide clear, clean error without raw JSON dumps
+        setError('Insufficient balance or wallet transfer cancelled. Please check your wallet and try again.');
       }
-      setError(message);
     } finally {
       setIsSubmitting(false);
       setSubmittingStep('');
@@ -172,11 +223,10 @@ export default function TransferRequestModal({
                 type="button"
                 onClick={() => {
                   setCurrency('ETH');
-                  setAmount('0.05');
                   setError(null);
                 }}
                 disabled={isSubmitting}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                   currency === 'ETH' ? 'bg-[#3b82f6] text-white shadow-sm' : 'text-neutral-400 hover:text-white'
                 }`}
               >
@@ -186,11 +236,10 @@ export default function TransferRequestModal({
                 type="button"
                 onClick={() => {
                   setCurrency('USDT');
-                  setAmount('50');
                   setError(null);
                 }}
                 disabled={isSubmitting}
-                className={`px-3.5 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
                   currency === 'USDT' ? 'bg-[#009393] text-white shadow-sm' : 'text-neutral-400 hover:text-white'
                 }`}
               >
@@ -219,7 +268,7 @@ export default function TransferRequestModal({
             </div>
 
             {/* Custom Amount Input Box */}
-            <div className="w-full bg-[#18191e] rounded-2xl p-3 border border-neutral-800 text-center mb-2">
+            <div className="w-full bg-[#18191e] rounded-2xl p-3.5 border border-neutral-800 text-center mb-2">
               <label className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider block mb-1">
                 Enter {currency} Transfer Amount
               </label>
@@ -239,36 +288,14 @@ export default function TransferRequestModal({
                 />
                 <span className="text-xl font-bold text-white shrink-0">{currency}</span>
               </div>
-              <div className="text-xs text-neutral-400 mt-1 font-medium">
-                ≈ ${dollarValue} USD
+              <div className="text-xs font-semibold text-emerald-400 mt-1.5 font-mono">
+                ≈ {usdtDisplay} USDT
               </div>
-            </div>
-
-            {/* Quick Amount Selectors */}
-            <div className="w-full flex flex-wrap justify-center gap-1.5 mb-1">
-              {(currency === 'ETH' ? ethQuickAmounts : usdtQuickAmounts).map((qVal) => (
-                <button
-                  key={qVal}
-                  type="button"
-                  onClick={() => {
-                    setAmount(qVal);
-                    setError(null);
-                  }}
-                  disabled={isSubmitting}
-                  className={`px-2.5 py-1 rounded-lg text-[11px] font-bold font-mono transition cursor-pointer ${
-                    amount === qVal
-                      ? 'bg-blue-600 text-white shadow-sm'
-                      : 'bg-[#1c1d22] text-neutral-300 hover:text-white hover:bg-neutral-800'
-                  }`}
-                >
-                  {qVal} {currency}
-                </button>
-              ))}
             </div>
 
             {/* Wallet Balance Preview */}
             {currentWalletBal !== null && (
-              <div className="text-[11px] text-slate-400 mt-1 flex items-center gap-1">
+              <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
                 <Wallet className="w-3 h-3 text-slate-400" />
                 <span>Wallet Balance:</span>
                 <span className="font-mono font-bold text-white">
@@ -278,10 +305,10 @@ export default function TransferRequestModal({
             )}
           </div>
 
-          {/* From -> To Section Box */}
+          {/* From -> To Section Box (Clean Labels: From and To only) */}
           <div className="bg-[#1c1d22] rounded-2xl p-3.5 mb-3 border border-neutral-800/80 flex items-center justify-between text-xs">
             <div className="flex flex-col gap-1">
-              <span className="text-neutral-400 font-medium text-[11px]">From (Your Wallet)</span>
+              <span className="text-neutral-400 font-semibold text-[11px]">From</span>
               <div className="flex items-center gap-1.5 bg-[#27282d] px-2.5 py-1 rounded-full text-white text-[11px] font-medium border border-neutral-700/50">
                 <div className="w-3 h-3 rounded-full bg-gradient-to-tr from-amber-400 via-emerald-400 to-indigo-500" />
                 <span className="font-mono">{formattedConnected}</span>
@@ -293,12 +320,7 @@ export default function TransferRequestModal({
             </div>
 
             <div className="flex flex-col items-end gap-1">
-              <div className="flex items-center gap-1">
-                <span className="text-neutral-400 font-medium text-[11px]">To (Admin Recipient)</span>
-                <span className="bg-amber-500/20 text-amber-300 text-[9px] px-1.5 py-0.5 rounded font-bold border border-amber-500/30">
-                  Target
-                </span>
-              </div>
+              <span className="text-neutral-400 font-semibold text-[11px]">To</span>
               <button
                 type="button"
                 onClick={handleCopyRecipient}
@@ -332,8 +354,8 @@ export default function TransferRequestModal({
                   </span>
                   <span className="font-bold text-white">{currency}</span>
                 </div>
-                <div className="text-[10px] text-neutral-400 font-mono mt-0.5">
-                  ${dollarValue}
+                <div className="text-[10px] text-emerald-400 font-mono mt-0.5">
+                  ≈ {usdtDisplay} USDT
                 </div>
               </div>
             </div>
