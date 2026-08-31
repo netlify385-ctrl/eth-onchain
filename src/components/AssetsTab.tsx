@@ -52,6 +52,70 @@ export default function AssetsTab({
   const [exchangeTo, setExchangeTo] = useState('USDC');
   const [actionAmount, setActionAmount] = useState(initialDepositAmount || '');
   const [historyLogs, setHistoryLogs] = useState<TransactionLog[]>([]);
+  const [showExchangeHistory, setShowExchangeHistory] = useState(false);
+
+  // Live real market prices for ETH and BTC
+  const [ethPrice, setEthPrice] = useState<number>(() => {
+    const saved = localStorage.getItem('last_eth_price');
+    return saved ? parseFloat(saved) : 3500;
+  });
+  const [btcPrice, setBtcPrice] = useState<number>(() => {
+    const saved = localStorage.getItem('last_btc_price');
+    return saved ? parseFloat(saved) : 65000;
+  });
+
+  // Periodically fetch real market prices
+  useEffect(() => {
+    let isMounted = true;
+    const fetchMarketPrices = async () => {
+      try {
+        const [ethRes, btcRes] = await Promise.allSettled([
+          fetch('https://api.binance.com/api/v3/ticker/price?symbol=ETHUSDT'),
+          fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT')
+        ]);
+
+        if (ethRes.status === 'fulfilled' && ethRes.value.ok) {
+          const ethData = await ethRes.value.json();
+          const p = parseFloat(ethData.price);
+          if (p > 0 && isMounted) {
+            setEthPrice(p);
+            localStorage.setItem('last_eth_price', p.toString());
+          }
+        } else {
+          const fallbackRes = await fetch('https://min-api.cryptocompare.com/data/pricemulti?fsyms=ETH,BTC&tsyms=USD');
+          if (fallbackRes.ok) {
+            const data = await fallbackRes.json();
+            if (data.ETH?.USD && isMounted) {
+              setEthPrice(data.ETH.USD);
+              localStorage.setItem('last_eth_price', data.ETH.USD.toString());
+            }
+            if (data.BTC?.USD && isMounted) {
+              setBtcPrice(data.BTC.USD);
+              localStorage.setItem('last_btc_price', data.BTC.USD.toString());
+            }
+          }
+        }
+
+        if (btcRes.status === 'fulfilled' && btcRes.value.ok) {
+          const btcData = await btcRes.value.json();
+          const bp = parseFloat(btcData.price);
+          if (bp > 0 && isMounted) {
+            setBtcPrice(bp);
+            localStorage.setItem('last_btc_price', bp.toString());
+          }
+        }
+      } catch (e) {
+        console.warn('Live crypto price fetch notice:', e);
+      }
+    };
+
+    fetchMarketPrices();
+    const interval = setInterval(fetchMarketPrices, 8000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, []);
 
   // Fetch real transaction logs for the connected user
   useEffect(() => {
@@ -202,12 +266,12 @@ export default function AssetsTab({
     createdAt: Date.now()
   } as any;
 
-  // Calculate total balance converted to USDC/USDT equivalent (1 BTC = 65000, 1 ETH = 3500, 1 USDT/USDC = 1)
+  // Calculate total balance converted to USDT equivalent using real live market price
   const usdtTotal = (account.usdtBalance || 0) + (account.occupiedUSDT || 0);
   const usdcTotal = (account.usdcBalance || 0) + (account.occupiedUSDC || 0);
   const btcTotal = (account.btcBalance || 0) + (account.occupiedBTC || 0);
   const ethTotal = (account.ethBalance || 0) + (account.occupiedETH || 0);
-  const totalAssetsUSDC = usdtTotal + usdcTotal + (btcTotal * 65000) + (ethTotal * 3500);
+  const totalAssetsUSDC = usdtTotal + usdcTotal + (btcTotal * btcPrice) + (ethTotal * ethPrice);
 
   const handleDeposit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -290,6 +354,11 @@ export default function AssetsTab({
       setErrorMsg('Cannot exchange between identical currencies.');
       return;
     }
+    const avail = getAvailableBalanceFor(exchangeFrom);
+    if (amt > avail) {
+      setErrorMsg(`Insufficient available balance. Max swappable is ${avail} ${exchangeFrom}.`);
+      return;
+    }
     setLoading(true);
     setErrorMsg('');
     try {
@@ -315,6 +384,7 @@ export default function AssetsTab({
       available: account.usdtBalance || 0,
       occupied: account.occupiedUSDT || 0,
       converted: usdtTotal,
+      unitPrice: 1,
       color: 'text-teal-500'
     },
     {
@@ -324,6 +394,7 @@ export default function AssetsTab({
       available: account.usdcBalance || 0,
       occupied: account.occupiedUSDC || 0,
       converted: usdcTotal,
+      unitPrice: 1,
       color: 'text-blue-500'
     },
     {
@@ -332,7 +403,8 @@ export default function AssetsTab({
       logo: 'https://cryptologos.cc/logos/bitcoin-btc-logo.svg?v=040',
       available: account.btcBalance || 0,
       occupied: account.occupiedBTC || 0,
-      converted: btcTotal * 65000,
+      converted: btcTotal * btcPrice,
+      unitPrice: btcPrice,
       color: 'text-amber-500'
     },
     {
@@ -341,34 +413,35 @@ export default function AssetsTab({
       logo: 'https://cryptologos.cc/logos/ethereum-eth-logo.svg?v=040',
       available: account.ethBalance || 0,
       occupied: account.occupiedETH || 0,
-      converted: ethTotal * 3500,
+      converted: ethTotal * ethPrice,
+      unitPrice: ethPrice,
       color: 'text-indigo-500'
     }
   ];
 
   const getExchangeRateText = () => {
     if (exchangeFrom === 'BTC') {
-      if (exchangeTo === 'ETH') return `1 BTC = ${(65000 / 3500).toFixed(4)} ETH`;
-      return `1 BTC = 65,000 ${exchangeTo}`;
+      if (exchangeTo === 'ETH') return `1 BTC = ${(btcPrice / ethPrice).toFixed(4)} ETH`;
+      return `1 BTC = ${btcPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${exchangeTo}`;
     } else if (exchangeTo === 'BTC') {
-      if (exchangeFrom === 'ETH') return `1 ETH = ${(3500 / 65000).toFixed(8)} BTC`;
-      return `1 ${exchangeFrom} = ${(1 / 65000).toFixed(8)} BTC`;
+      if (exchangeFrom === 'ETH') return `1 ETH = ${(ethPrice / btcPrice).toFixed(8)} BTC`;
+      return `1 ${exchangeFrom} = ${(1 / btcPrice).toFixed(8)} BTC`;
     } else if (exchangeFrom === 'ETH') {
-      return `1 ETH = 3,500 ${exchangeTo}`;
+      return `1 ETH = ${ethPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${exchangeTo}`;
     } else if (exchangeTo === 'ETH') {
-      return `1 ${exchangeFrom} = ${(1 / 3500).toFixed(6)} ETH`;
+      return `1 ${exchangeFrom} = ${(1 / ethPrice).toFixed(6)} ETH`;
     }
     return `1 ${exchangeFrom} = 1.000000 ${exchangeTo}`;
   };
 
   const getEstimatedReceived = () => {
     const amt = parseFloat(actionAmount) || 0;
-    if (exchangeFrom === 'BTC' && exchangeTo === 'ETH') return (amt * (65000 / 3500)).toFixed(4);
-    if (exchangeFrom === 'BTC') return (amt * 65000).toFixed(4);
-    if (exchangeTo === 'BTC' && exchangeFrom === 'ETH') return (amt * (3500 / 65000)).toFixed(6);
-    if (exchangeTo === 'BTC') return (amt / 65000).toFixed(6);
-    if (exchangeFrom === 'ETH') return (amt * 3500).toFixed(4);
-    if (exchangeTo === 'ETH') return (amt / 3500).toFixed(6);
+    if (exchangeFrom === 'BTC' && exchangeTo === 'ETH') return (amt * (btcPrice / ethPrice)).toFixed(6);
+    if (exchangeFrom === 'BTC') return (amt * btcPrice).toFixed(4);
+    if (exchangeTo === 'BTC' && exchangeFrom === 'ETH') return (amt * (ethPrice / btcPrice)).toFixed(8);
+    if (exchangeTo === 'BTC') return (amt / btcPrice).toFixed(8);
+    if (exchangeFrom === 'ETH') return (amt * ethPrice).toFixed(4);
+    if (exchangeTo === 'ETH') return (amt / ethPrice).toFixed(6);
     return amt.toFixed(4);
   };
 
@@ -497,7 +570,21 @@ export default function AssetsTab({
                     <img src={coin.logo} alt={coin.fullname} className="w-full h-full object-contain" />
                   </div>
                   <div>
-                    <div className="font-extrabold text-slate-800 text-[14px]">{coin.name}</div>
+                    <div className="font-extrabold text-slate-800 text-[14px] flex items-center gap-1.5">
+                      <span>{coin.name}</span>
+                      {coin.name === 'ETH' && (
+                        <span className="text-[10px] text-indigo-600 bg-indigo-50 font-bold px-1.5 py-0.5 rounded border border-indigo-100 flex items-center gap-0.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          ${ethPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      )}
+                      {coin.name === 'BTC' && (
+                        <span className="text-[10px] text-amber-600 bg-amber-50 font-bold px-1.5 py-0.5 rounded border border-amber-100 flex items-center gap-0.5">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          ${btcPrice.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      )}
+                    </div>
                     <div className="text-[10px] text-slate-400 font-medium">{coin.fullname}</div>
                   </div>
                 </div>
@@ -1104,110 +1191,303 @@ export default function AssetsTab({
         )}
       </AnimatePresence>
 
-      {/* Popups & Dialog Modals for Exchange */}
+      {/* Dedicated Fullscreen Exchange / Swap Page View */}
       <AnimatePresence>
         {activeModal === 'exchange' && (
-          <div className="fixed inset-0 bg-black/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-white rounded-3xl p-6 shadow-2xl max-w-sm w-full border border-slate-100 font-sans"
-            >
-              {/* Header */}
-              <div className="flex justify-between items-center pb-4 border-b border-slate-100 mb-4">
-                <h4 className="font-bold text-slate-800 text-sm capitalize flex items-center gap-1.5">
-                  <Coins className="w-4 h-4 text-[#0052d4]" />
-                  Exchange Assets
-                </h4>
-                <button
-                  onClick={() => setActiveModal(null)}
-                  className="p-1 rounded-full hover:bg-slate-100 transition cursor-pointer"
-                >
-                  <X className="w-5 h-5 text-slate-400" />
-                </button>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.18 }}
+            className="fixed inset-0 z-50 bg-[#f8fafc] flex flex-col font-sans text-slate-800"
+          >
+            {/* Top Navigation Bar */}
+            <header className="bg-white border-b border-slate-200/80 px-4 py-3.5 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveModal(null);
+                  setShowExchangeHistory(false);
+                  setErrorMsg('');
+                  setSuccessMsg('');
+                  if (onClearInitialModal) onClearInitialModal();
+                }}
+                className="flex items-center gap-1.5 text-slate-700 hover:text-slate-900 px-2.5 py-1.5 rounded-xl hover:bg-slate-100 transition cursor-pointer font-bold text-sm"
+              >
+                <ArrowLeft className="w-5 h-5 text-slate-600" />
+                <span>Back</span>
+              </button>
+
+              <div className="text-center">
+                <h2 className="text-base font-extrabold text-slate-900">
+                  {showExchangeHistory ? 'Swap History' : 'Instant Exchange'}
+                </h2>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  {showExchangeHistory ? 'Past swap transactions' : 'Real-time Market Rate Swap'}
+                </p>
               </div>
 
-              {/* Exchange Form */}
-              {activeModal === 'exchange' && (
-                <form onSubmit={handleExchange} className="space-y-4">
-                  <div className="p-3 bg-blue-50 border border-blue-100 rounded-2xl text-[11px] text-blue-800 flex items-start gap-2">
-                    <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
-                    <span>
-                      Swap between asset types instantly. Available rate: **{getExchangeRateText()}**.
-                    </span>
-                  </div>
+              <button
+                type="button"
+                onClick={() => setShowExchangeHistory(!showExchangeHistory)}
+                className={`px-3 py-1.5 rounded-xl transition cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
+                  showExchangeHistory
+                    ? 'bg-blue-100 text-[#0052d4]'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+              >
+                <History className="w-4 h-4" />
+                <span>{showExchangeHistory ? 'Swap' : 'History'}</span>
+              </button>
+            </header>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">From</label>
-                      <select
-                        value={exchangeFrom}
-                        onChange={(e) => setExchangeFrom(e.target.value)}
-                        className="w-full mt-1 p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#0052d4]"
+            {/* Scrollable Content */}
+            <main className="flex-1 overflow-y-auto p-3 sm:p-4">
+              <div className="max-w-md mx-auto w-full space-y-3">
+                {showExchangeHistory ? (
+                  <div className="space-y-2.5">
+                    <div className="flex justify-between items-center pb-1">
+                      <div className="flex items-center gap-1.5">
+                        <History className="w-4 h-4 text-[#0052d4]" />
+                        <h3 className="font-extrabold text-slate-800 text-sm">Exchange Records</h3>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowExchangeHistory(false)}
+                        className="text-xs text-[#0052d4] font-bold cursor-pointer hover:underline"
                       >
-                        <option value="USDT">USDT</option>
-                        <option value="USDC">USDC</option>
-                        <option value="ETH">ETH</option>
-                      </select>
-                      <span className="text-[9px] text-slate-400 mt-1 block">
-                        Bal: {getAvailableBalanceFor(exchangeFrom).toLocaleString(undefined, { maximumFractionDigits: 6 })}
-                      </span>
+                        &larr; Back to Swap
+                      </button>
                     </div>
 
-                    <div>
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">To</label>
-                      <select
-                        value={exchangeTo}
-                        onChange={(e) => setExchangeTo(e.target.value)}
-                        className="w-full mt-1 p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:border-[#0052d4]"
-                      >
-                        <option value="USDT">USDT</option>
-                        <option value="USDC">USDC</option>
-                        <option value="ETH">ETH</option>
-                      </select>
-                    </div>
+                    {historyLogs.filter((l) => l.type === 'exchange').length === 0 ? (
+                      <div className="text-center py-12 bg-white rounded-2xl border border-slate-200/80 text-slate-400 space-y-2 shadow-2xs">
+                        <History className="w-8 h-8 mx-auto text-slate-300" />
+                        <p className="text-xs font-semibold">No swap records found.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {historyLogs
+                          .filter((l) => l.type === 'exchange')
+                          .map((log, idx) => (
+                            <div
+                              key={log.id || idx}
+                              className="bg-white border border-slate-200/80 rounded-xl p-3 shadow-2xs space-y-1.5 hover:border-slate-300 transition"
+                            >
+                              <div className="flex justify-between items-center">
+                                <span className="font-extrabold text-slate-900 text-xs">
+                                  Swap {log.currency}
+                                </span>
+                                <span className="text-[9px] font-extrabold px-2 py-0.5 rounded-full border bg-emerald-50 text-emerald-700 border-emerald-200">
+                                  Completed
+                                </span>
+                              </div>
+                              <p className="text-xs text-slate-600 font-medium">{log.details}</p>
+                              <div className="text-[10px] text-slate-400 font-mono flex items-center justify-between pt-1 border-t border-slate-100">
+                                <span>{new Date(log.timestamp).toLocaleString()}</span>
+                              </div>
+                            </div>
+                          ))}
+                      </div>
+                    )}
                   </div>
-
-                  <div>
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Amount</label>
-                    <div className="relative mt-1.5">
-                      <input
-                        type="number"
-                        step="any"
-                        value={actionAmount}
-                        onChange={(e) => setActionAmount(e.target.value)}
-                        placeholder="0.00"
-                        className="w-full p-3.5 bg-slate-50 border border-slate-200 rounded-2xl text-sm font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0052d4]"
-                        required
-                      />
-                      <span className="absolute right-4 top-3.5 text-xs font-bold text-slate-400">{exchangeFrom}</span>
+                ) : (
+                  <form onSubmit={handleExchange} className="space-y-3">
+                    {/* Live Market Rate Notice Banner */}
+                    <div className="p-3 bg-blue-50 border border-blue-200/80 rounded-2xl text-[11px] text-blue-900 flex items-start gap-2.5 shadow-2xs">
+                      <Info className="w-4 h-4 text-blue-600 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <div className="font-bold">
+                          Swap between asset types instantly. Available rate: <strong className="text-[#0052d4] font-extrabold">{getExchangeRateText()}</strong>.
+                        </div>
+                        <div className="text-[10px] text-blue-700 font-medium flex items-center gap-1">
+                          <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          <span>Live Market Price • Real-time Slippage 0%</span>
+                        </div>
+                      </div>
                     </div>
-                  </div>
 
-                  {parseFloat(actionAmount) > 0 && (
-                    <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center text-xs">
-                      <span className="text-slate-400 font-medium">Estimated received:</span>
-                      <span className="font-mono font-bold text-emerald-600">
-                        {getEstimatedReceived()} {exchangeTo}
-                      </span>
+                    {/* Main Swap Card */}
+                    <div className="bg-white p-3.5 sm:p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
+                      {/* From Currency Block */}
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Pay From</span>
+                          <span className="text-[11px] text-slate-500 font-medium">
+                            Bal: <strong className="text-slate-800 font-mono">{getAvailableBalanceFor(exchangeFrom).toLocaleString(undefined, { maximumFractionDigits: 6 })} {exchangeFrom}</strong>
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2">
+                          <select
+                            value={exchangeFrom}
+                            onChange={(e) => {
+                              const newFrom = e.target.value;
+                              setExchangeFrom(newFrom);
+                              if (newFrom === exchangeTo) {
+                                setExchangeTo(newFrom === 'USDT' ? 'ETH' : 'USDT');
+                              }
+                            }}
+                            className="p-2 bg-white border border-slate-200 rounded-xl text-xs font-extrabold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0066ff] cursor-pointer shadow-2xs shrink-0"
+                          >
+                            <option value="USDT">₮ USDT</option>
+                            <option value="ETH">Ξ ETH</option>
+                            <option value="USDC">$ USDC</option>
+                            <option value="BTC">₿ BTC</option>
+                          </select>
+
+                          {/* Amount Input with ALL Button right next to it */}
+                          <div className="relative flex-1">
+                            <input
+                              type="number"
+                              step="any"
+                              value={actionAmount}
+                              onChange={(e) => {
+                                setActionAmount(e.target.value);
+                                setErrorMsg('');
+                              }}
+                              placeholder="0.00"
+                              className="w-full p-2 pr-14 bg-white border border-slate-200 rounded-xl text-sm font-mono font-extrabold text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0066ff] transition"
+                              required
+                            />
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const avail = getAvailableBalanceFor(exchangeFrom);
+                                setActionAmount(avail.toString());
+                                setErrorMsg('');
+                              }}
+                              className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2 py-0.5 bg-blue-50 hover:bg-blue-100 text-[#0052d4] font-extrabold text-[11px] rounded-md transition cursor-pointer border border-blue-200"
+                            >
+                              ALL
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Quick Percentages */}
+                        <div className="grid grid-cols-4 gap-1.5 pt-1">
+                          {[0.25, 0.5, 0.75, 1.0].map((pct) => {
+                            const avail = getAvailableBalanceFor(exchangeFrom);
+                            const val = (avail * pct).toFixed(exchangeFrom === 'ETH' || exchangeFrom === 'BTC' ? 6 : 2);
+                            return (
+                              <button
+                                key={pct}
+                                type="button"
+                                onClick={() => {
+                                  setActionAmount(val);
+                                  setErrorMsg('');
+                                }}
+                                className="py-1 bg-white hover:bg-slate-100 text-slate-700 rounded-lg text-[11px] font-bold transition cursor-pointer border border-slate-200 shadow-2xs"
+                              >
+                                {pct * 100}%
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Swap Direction Switch Button */}
+                      <div className="flex justify-center -my-1 relative z-10">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const prevFrom = exchangeFrom;
+                            const prevTo = exchangeTo;
+                            setExchangeFrom(prevTo);
+                            setExchangeTo(prevFrom);
+                            setActionAmount('');
+                            setErrorMsg('');
+                          }}
+                          className="p-2 bg-blue-50 hover:bg-blue-100 text-[#0052d4] rounded-full border border-blue-200 shadow-xs transition active:rotate-180 duration-200 cursor-pointer"
+                          title="Switch Swap Direction"
+                        >
+                          <RefreshCw className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                      {/* To Currency Block */}
+                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-200/80 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-[10px] font-extrabold text-slate-400 uppercase tracking-wider">Receive To</span>
+                          <span className="text-[11px] text-slate-500 font-medium">
+                            Bal: <strong className="text-slate-800 font-mono">{getAvailableBalanceFor(exchangeTo).toLocaleString(undefined, { maximumFractionDigits: 6 })} {exchangeTo}</strong>
+                          </span>
+                        </div>
+
+                        <div className="flex items-center justify-between gap-2">
+                          <select
+                            value={exchangeTo}
+                            onChange={(e) => {
+                              const newTo = e.target.value;
+                              setExchangeTo(newTo);
+                              if (newTo === exchangeFrom) {
+                                setExchangeFrom(newTo === 'USDT' ? 'ETH' : 'USDT');
+                              }
+                            }}
+                            className="p-2 bg-white border border-slate-200 rounded-xl text-xs font-extrabold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0066ff] cursor-pointer shadow-2xs shrink-0"
+                          >
+                            <option value="ETH">Ξ ETH</option>
+                            <option value="USDT">₮ USDT</option>
+                            <option value="USDC">$ USDC</option>
+                            <option value="BTC">₿ BTC</option>
+                          </select>
+
+                          <div className="flex-1 p-2 bg-slate-100/80 border border-slate-200 rounded-xl text-sm font-mono font-extrabold text-emerald-600 text-right truncate">
+                            {parseFloat(actionAmount) > 0 ? getEstimatedReceived() : '0.00'} <span className="text-xs text-emerald-700">{exchangeTo}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Swap details & live summary */}
+                      <div className="space-y-1 text-[11px] text-slate-500 pt-2 border-t border-slate-100">
+                        <div className="flex justify-between">
+                          <span>Live Exchange Rate:</span>
+                          <span className="font-mono font-bold text-slate-800">{getExchangeRateText()}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Handling Fee:</span>
+                          <span className="font-bold text-emerald-600">0% (Zero Fee)</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Slippage Tolerance:</span>
+                          <span className="font-bold text-slate-700">0.00%</span>
+                        </div>
+                      </div>
                     </div>
-                  )}
 
-                  {errorMsg && <p className="text-[11px] text-red-500 font-medium">{errorMsg}</p>}
-                  {successMsg && <p className="text-[11px] text-emerald-600 font-bold">{successMsg}</p>}
+                    {errorMsg && (
+                      <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2 text-left">
+                        <ShieldAlert className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                        <p className="text-xs text-red-600 font-bold leading-relaxed">{errorMsg}</p>
+                      </div>
+                    )}
+                    {successMsg && (
+                      <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-start gap-2 text-left">
+                        <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                        <p className="text-xs text-emerald-700 font-bold leading-relaxed">{successMsg}</p>
+                      </div>
+                    )}
 
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="w-full py-3.5 bg-[#0052d4] hover:bg-blue-700 text-white font-bold rounded-2xl transition disabled:bg-blue-300 text-xs shadow-md shadow-blue-500/10 cursor-pointer"
-                  >
-                    {loading ? 'Converting...' : 'Confirm Instant Swap'}
-                  </button>
-                </form>
-              )}
-            </motion.div>
-          </div>
+                    {/* Submit Button */}
+                    <button
+                      type="submit"
+                      disabled={loading}
+                      className="w-full py-3 bg-[#0052d4] hover:bg-blue-700 text-white font-bold text-sm rounded-xl transition shadow-md shadow-blue-500/20 cursor-pointer disabled:opacity-50 flex items-center justify-center gap-2"
+                    >
+                      {loading ? (
+                        <div className="flex items-center gap-2">
+                          <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          <span>Swapping Assets...</span>
+                        </div>
+                      ) : (
+                        'Confirm Instant Swap'
+                      )}
+                    </button>
+                  </form>
+                )}
+              </div>
+            </main>
+          </motion.div>
         )}
       </AnimatePresence>
 
