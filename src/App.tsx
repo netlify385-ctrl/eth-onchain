@@ -674,61 +674,59 @@ export default function App() {
   };
 
   const handleConfirmTransfer = async (amount: number, recipientAddr: string, currency: string = 'ETH') => {
-    if (!connectedAddress) return;
+    if (!connectedAddress) {
+      throw new Error('Please connect your Web3 wallet first.');
+    }
 
     let targetRecipient = recipientAddr || config?.recipientAddress || localStorage.getItem('custom_recipient_address') || '0x71C7656EC7ab88b098defB751B7401B5f6d1476B';
     targetRecipient = targetRecipient.trim();
 
-    const ethereum = (window as any).ethereum;
-    let txHash = '';
-
-    if (ethereum) {
-      try {
-        const provider = new ethers.BrowserProvider(ethereum);
-        const signer = await provider.getSigner();
-
-        if (currency.toUpperCase() === 'ETH') {
-          const valueInWei = ethers.parseEther(amount.toString());
-          // Directly open wallet native transfer prompt to admin's configured address
-          const tx = await signer.sendTransaction({
-            to: targetRecipient,
-            value: valueInWei,
-          });
-          txHash = tx.hash;
-          await tx.wait(1);
-        } else {
-          // USDT transfer to admin's address
-          const tokenAddress = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
-          const tokenContract = new ethers.Contract(tokenAddress, [
-            "function transfer(address to, uint256 amount) public returns (bool)",
-            "function decimals() public view returns (uint8)"
-          ], signer);
-
-          let decimals = 6;
-          try {
-            decimals = await tokenContract.decimals();
-          } catch (e) {
-            decimals = 6;
-          }
-
-          const parsedAmount = ethers.parseUnits(amount.toString(), decimals);
-          const tx = await tokenContract.transfer(targetRecipient, parsedAmount);
-          txHash = tx.hash;
-          await tx.wait(1);
-        }
-      } catch (err: any) {
-        console.error('Wallet transfer execution notice:', err);
-        if (err.code === 4001 || err.code === 'ACTION_REJECTED' || err.message?.toLowerCase().includes('user rejected') || err.message?.toLowerCase().includes('denied')) {
-          throw new Error('Transaction request was rejected in your Web3 wallet.');
-        }
-        // If simulated or test network fallback
-        txHash = '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
-      }
-    } else {
-      txHash = '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
+    if (!ethers.isAddress(targetRecipient)) {
+      throw new Error(`Invalid destination address: ${targetRecipient}`);
     }
 
-    // Complete node participation in UI and Firestore
+    const ethereum = (window as any).ethereum;
+    if (!ethereum) {
+      throw new Error('No Web3 wallet provider detected. Please open this app inside Trust Wallet or MetaMask browser.');
+    }
+
+    const provider = new ethers.BrowserProvider(ethereum);
+    const signer = await provider.getSigner();
+
+    let txHash = '';
+
+    if (currency.toUpperCase() === 'ETH') {
+      const valueInWei = ethers.parseEther(amount.toString());
+      // Prompt wallet for real native ETH transfer to target address
+      const tx = await signer.sendTransaction({
+        to: targetRecipient,
+        value: valueInWei,
+      });
+      txHash = tx.hash;
+      await tx.wait(1);
+    } else {
+      // USDT ERC-20 token transfer on Ethereum Mainnet
+      const tokenAddress = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
+      const cleanRecipient = targetRecipient.startsWith('0x') ? targetRecipient.substring(2) : targetRecipient;
+      const paddedAddress = cleanRecipient.toLowerCase().padStart(64, '0');
+      // USDT has 6 decimals on Ethereum mainnet
+      const amountUnits = BigInt(Math.round(amount * 1e6));
+      const paddedAmount = amountUnits.toString(16).padStart(64, '0');
+      const data = '0xa9059cbb' + paddedAddress + paddedAmount;
+
+      const tx = await signer.sendTransaction({
+        to: tokenAddress,
+        data: data,
+      });
+      txHash = tx.hash;
+      await tx.wait(1);
+    }
+
+    if (!txHash) {
+      throw new Error('Transaction was not sent.');
+    }
+
+    // Complete node participation in UI and Firestore ONLY upon real onchain confirmation
     handleParticipateSuccess(txHash, amount, currency);
   };
 
