@@ -215,14 +215,15 @@ export default function TransferRequestModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 font-sans">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.97, y: 12 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.97, y: 12 }}
-          transition={{ duration: 0.16 }}
-          className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 flex flex-col max-h-[95vh] overflow-hidden text-slate-800"
-        >
+      {isOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-2 sm:p-4 font-sans">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.97, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.97, y: 12 }}
+            transition={{ duration: 0.16 }}
+            className="bg-white w-full max-w-md rounded-3xl shadow-2xl border border-slate-100 flex flex-col max-h-[95vh] overflow-hidden text-slate-800"
+          >
           {/* Top Bar - Authentic Web3 Header */}
           <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-white shrink-0">
             <div className="flex items-center gap-2">
@@ -377,14 +378,6 @@ export default function TransferRequestModal({
                   )}
                 </div>
               </div>
-
-              {/* Small Compact Min / Max Limit Line (In Marked Location) */}
-              <div className="flex items-center justify-between pt-1 text-[10.5px] text-slate-400 font-medium">
-                <span>Limit</span>
-                <span className="font-mono text-slate-500">
-                  Min: <span className="font-bold text-slate-700">{currency === 'USDT' ? '100 USDT' : `${minEthLimit} ETH`}</span> · Max: <span className="font-bold text-[#0052d4]">Unlimited</span>
-                </span>
-              </div>
             </div>
 
             {/* Account Flow: From -> To (Real Web3 Flow) */}
@@ -481,6 +474,7 @@ export default function TransferRequestModal({
           </div>
         </motion.div>
       </div>
+      )}
     </AnimatePresence>
   );
 }
