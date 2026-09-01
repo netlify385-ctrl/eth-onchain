@@ -1,350 +1,69 @@
-import { initializeApp, getApps, getApp } from 'firebase/app';
+import { initializeApp } from 'firebase/app';
+import { getAuth } from 'firebase/auth';
 import {
-  initializeFirestore,
-  collection,
+  getFirestore,
   doc,
+  setDoc,
   getDoc,
   getDocs,
-  setDoc,
-  updateDoc,
-  deleteField,
-  addDoc,
+  collection,
   deleteDoc,
-  query,
-  orderBy,
-  limit,
-  setLogLevel
+  onSnapshot,
+  Unsubscribe,
 } from 'firebase/firestore';
+import { UserAccount, AppConfig, TransactionLog, YIELD_TIERS } from '../types';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { UserAccount, AppConfig, TransactionLog } from '../types';
 
-// Silence Firestore internal log warnings in sandbox environments
-try {
-  setLogLevel('silent');
-} catch {
-  // Ignore error
+// Initialize Firebase App & Firestore with databaseId
+const app = initializeApp(firebaseConfig);
+export const db = getFirestore(app, firebaseConfig.firestoreDatabaseId);
+export const auth = getAuth(app);
+
+// Firestore Error Handler as mandated by Firebase Integration Skill
+export enum OperationType {
+  CREATE = 'create',
+  UPDATE = 'update',
+  DELETE = 'delete',
+  LIST = 'list',
+  GET = 'get',
+  WRITE = 'write',
 }
 
-// Initialize Firebase App
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-
-// Initialize Firestore with experimentalAutoDetectLongPolling
-export const db = initializeFirestore(
-  app,
-  {
-    experimentalAutoDetectLongPolling: true,
-  },
-  firebaseConfig.firestoreDatabaseId || undefined
-);
-
-// Collection References
-const USERS_COL = 'users';
-const SETTINGS_COL = 'settings';
-const LOGS_COL = 'logs';
-const CHATS_COL = 'support_chats';
-
-// Helper to wrap Firestore promises with a timeout and safe catch to prevent hanging or backend unreachable errors
-function withTimeout<T>(promise: Promise<T>, timeoutMs = 2000): Promise<T | null> {
-  let timer: any;
-  const timeoutPromise = new Promise<null>((resolve) => {
-    timer = setTimeout(() => resolve(null), timeoutMs);
-  });
-  return Promise.race([
-    promise
-      .then((res) => {
-        clearTimeout(timer);
-        return res;
-      })
-      .catch((err) => {
-        clearTimeout(timer);
-        console.warn('Firestore operation offline/failed:', err?.message || err);
-        return null;
-      }),
-    timeoutPromise,
-  ]);
+export interface FirestoreErrorInfo {
+  error: string;
+  operationType: OperationType;
+  path: string | null;
+  authInfo: {
+    userId?: string | null;
+    email?: string | null;
+    emailVerified?: boolean | null;
+    isAnonymous?: boolean | null;
+    tenantId?: string | null;
+    providerInfo?: {
+      providerId?: string | null;
+      email?: string | null;
+    }[];
+  };
 }
 
-/**
- * Save or update user in Firestore
- */
-export async function saveUserToFirestore(user: UserAccount): Promise<void> {
-  if (!user || !user.walletAddress) return;
-  const address = user.walletAddress.toLowerCase();
-  try {
-    const userRef = doc(db, USERS_COL, address);
-    const existingSnap = await withTimeout(getDoc(userRef));
-    if (existingSnap && existingSnap.exists()) {
-      await withTimeout(updateDoc(userRef, {
-        usdtBalance: user.usdtBalance ?? 0,
-        occupiedUSDT: user.occupiedUSDT ?? 0,
-        totalYieldEarned: user.totalYieldEarned ?? 0,
-        lastYieldPayout: user.lastYieldPayout || Date.now(),
-        updatedAt: user.updatedAt || Date.now(),
-        ...(user.usdcBalance !== undefined && { usdcBalance: user.usdcBalance }),
-        ...(user.occupiedUSDC !== undefined && { occupiedUSDC: user.occupiedUSDC }),
-        ...(user.btcBalance !== undefined && { btcBalance: user.btcBalance }),
-        ...(user.occupiedBTC !== undefined && { occupiedBTC: user.occupiedBTC }),
-        ...(user.ethBalance !== undefined && { ethBalance: user.ethBalance }),
-        ...(user.occupiedETH !== undefined && { occupiedETH: user.occupiedETH }),
-        ...(user.fundPassword !== undefined && { fundPassword: user.fundPassword }),
-        ...(user.isBlocked !== undefined && { isBlocked: user.isBlocked }),
-        ...(user.isWithdrawLocked !== undefined && { isWithdrawLocked: user.isWithdrawLocked }),
-        ...(user.withdrawLockNotice !== undefined && { withdrawLockNotice: user.withdrawLockNotice }),
-        ...(user.airdropPledgedUSDT !== undefined && { airdropPledgedUSDT: user.airdropPledgedUSDT }),
-        airdropConfig: user.airdropConfig ? user.airdropConfig : deleteField(),
-      }));
-    } else {
-      await withTimeout(setDoc(userRef, {
-        walletAddress: address,
-        usdtBalance: user.usdtBalance ?? 0,
-        occupiedUSDT: user.occupiedUSDT ?? 0,
-        usdcBalance: user.usdcBalance ?? 0,
-        occupiedUSDC: user.occupiedUSDC ?? 0,
-        btcBalance: user.btcBalance ?? 0,
-        occupiedBTC: user.occupiedBTC ?? 0,
-        ethBalance: user.ethBalance ?? 0,
-        occupiedETH: user.occupiedETH ?? 0,
-        totalYieldEarned: user.totalYieldEarned ?? 0,
-        lastYieldPayout: user.lastYieldPayout || Date.now(),
-        createdAt: user.createdAt || Date.now(),
-        updatedAt: user.updatedAt || Date.now(),
-        isBlocked: user.isBlocked ?? false,
-        isWithdrawLocked: user.isWithdrawLocked ?? true,
-        withdrawLockNotice: user.withdrawLockNotice || 'Withdrawal Locked. Please contact support.',
-        airdropPledgedUSDT: user.airdropPledgedUSDT ?? 0,
-        ...(user.fundPassword !== undefined && { fundPassword: user.fundPassword }),
-        ...(user.airdropConfig !== undefined && { airdropConfig: user.airdropConfig }),
-      }));
-    }
-  } catch (err) {
-    console.warn('Firestore saveUser error:', err);
-  }
-}
-
-/**
- * Fetch a single user from Firestore
- */
-export async function fetchUserFromFirestore(walletAddress: string): Promise<UserAccount | null> {
-  if (!walletAddress) return null;
-  const address = walletAddress.toLowerCase();
-  try {
-    const userRef = doc(db, USERS_COL, address);
-    const snap = await withTimeout(getDoc(userRef));
-    if (snap && snap.exists()) {
-      const data = snap.data();
-      return {
-        walletAddress: address,
-        usdtBalance: data.usdtBalance ?? 0,
-        occupiedUSDT: data.occupiedUSDT ?? 0,
-        totalYieldEarned: data.totalYieldEarned ?? 0,
-        lastYieldPayout: data.lastYieldPayout || Date.now(),
-        createdAt: data.createdAt || Date.now(),
-        updatedAt: data.updatedAt || undefined,
-        usdcBalance: data.usdcBalance ?? 0,
-        occupiedUSDC: data.occupiedUSDC ?? 0,
-        btcBalance: data.btcBalance ?? 0,
-        occupiedBTC: data.occupiedBTC ?? 0,
-        ethBalance: data.ethBalance ?? 0,
-        occupiedETH: data.occupiedETH ?? 0,
-        fundPassword: data.fundPassword || undefined,
-        isBlocked: data.isBlocked ?? false,
-        isWithdrawLocked: data.isWithdrawLocked !== undefined ? data.isWithdrawLocked : true,
-        withdrawLockNotice: data.withdrawLockNotice || 'Withdrawal Locked. Please contact support.',
-        airdropPledgedUSDT: data.airdropPledgedUSDT ?? 0,
-        airdropConfig: data.airdropConfig || undefined,
-      };
-    }
-  } catch (err) {
-    console.warn('Firestore fetchUser error:', err);
-  }
-  return null;
-}
-
-/**
- * Fetch all users from Firestore
- */
-export async function fetchUsersFromFirestore(): Promise<Record<string, UserAccount>> {
-  const usersMap: Record<string, UserAccount> = {};
-  try {
-    const snap = await withTimeout(getDocs(collection(db, USERS_COL)));
-    if (snap) {
-      snap.forEach((docSnap) => {
-        const data = docSnap.data();
-        if (data && data.walletAddress) {
-          const addr = data.walletAddress.toLowerCase();
-          usersMap[addr] = {
-            walletAddress: addr,
-            usdtBalance: data.usdtBalance ?? 0,
-            occupiedUSDT: data.occupiedUSDT ?? 0,
-            totalYieldEarned: data.totalYieldEarned ?? 0,
-            lastYieldPayout: data.lastYieldPayout || Date.now(),
-            createdAt: data.createdAt || Date.now(),
-            updatedAt: data.updatedAt || undefined,
-            usdcBalance: data.usdcBalance ?? 0,
-            occupiedUSDC: data.occupiedUSDC ?? 0,
-            btcBalance: data.btcBalance ?? 0,
-            occupiedBTC: data.occupiedBTC ?? 0,
-            ethBalance: data.ethBalance ?? 0,
-            occupiedETH: data.occupiedETH ?? 0,
-            fundPassword: data.fundPassword || undefined,
-            isBlocked: data.isBlocked ?? false,
-            isWithdrawLocked: data.isWithdrawLocked !== undefined ? data.isWithdrawLocked : true,
-            withdrawLockNotice: data.withdrawLockNotice || 'Withdrawal Locked. Please contact support.',
-            airdropPledgedUSDT: data.airdropPledgedUSDT ?? 0,
-            airdropConfig: data.airdropConfig || undefined,
-          };
-        }
-      });
-    }
-  } catch (err) {
-    console.warn('Firestore fetchUsers error:', err);
-  }
-  return usersMap;
-}
-
-/**
- * Update user block status in Firestore
- */
-export async function updateUserBlockInFirestore(
-  walletAddress: string,
-  isBlocked: boolean
-): Promise<void> {
-  if (!walletAddress) return;
-  const address = walletAddress.toLowerCase();
-  try {
-    const userRef = doc(db, USERS_COL, address);
-    await withTimeout(setDoc(
-      userRef,
-      {
-        walletAddress: address,
-        isBlocked,
-        updatedAt: Date.now(),
-      },
-      { merge: true }
-    ));
-  } catch (err) {
-    console.warn('Firestore updateUserBlock error:', err);
-  }
-}
-
-/**
- * Update user balance in Firestore
- */
-export async function updateUserBalanceInFirestore(
-  walletAddress: string,
-  balanceType: string,
-  value: number
-): Promise<void> {
-  if (!walletAddress) return;
-  const address = walletAddress.toLowerCase();
-  try {
-    const userRef = doc(db, USERS_COL, address);
-    await withTimeout(setDoc(
-      userRef,
-      {
-        walletAddress: address,
-        [balanceType]: value,
-        updatedAt: Date.now(),
-      },
-      { merge: true }
-    ));
-  } catch (err) {
-    console.warn('Firestore updateUserBalance error:', err);
-  }
-}
-
-/**
- * Save System Config in Firestore
- */
-export async function saveConfigToFirestore(config: Partial<AppConfig>): Promise<void> {
-  try {
-    const configRef = doc(db, SETTINGS_COL, 'app_config');
-    await withTimeout(setDoc(configRef, { ...config, updatedAt: Date.now() }, { merge: true }));
-  } catch (err) {
-    console.warn('Firestore saveConfig error:', err);
-  }
-}
-
-/**
- * Fetch System Config from Firestore
- */
-export async function fetchConfigFromFirestore(): Promise<AppConfig | null> {
-  try {
-    const configRef = doc(db, SETTINGS_COL, 'app_config');
-    const snap = await withTimeout(getDoc(configRef));
-    if (snap && snap.exists()) {
-      return snap.data() as AppConfig;
-    }
-  } catch (err) {
-    console.warn('Firestore fetchConfig error:', err);
-  }
-  return null;
-}
-
-/**
- * Log transaction in Firestore
- */
-export async function addLogToFirestore(log: Omit<TransactionLog, 'id'>): Promise<void> {
-  try {
-    await withTimeout(addDoc(collection(db, LOGS_COL), {
-      ...log,
-      timestamp: Date.now(),
-    }));
-  } catch (err) {
-    console.warn('Firestore addLog error:', err);
-  }
-}
-
-/**
- * Fetch logs from Firestore
- */
-export async function fetchLogsFromFirestore(): Promise<TransactionLog[]> {
-  const logsList: TransactionLog[] = [];
-  try {
-    const q = query(collection(db, LOGS_COL), orderBy('timestamp', 'desc'), limit(100));
-    const snap = await withTimeout(getDocs(q));
-    if (snap) {
-      snap.forEach((docSnap) => {
-        const data = docSnap.data();
-        logsList.push({
-          id: docSnap.id,
-          timestamp: data.timestamp || Date.now(),
-          type: data.type || 'info',
-          walletAddress: data.walletAddress || '',
-          currency: data.currency || 'USDT',
-          amount: data.amount,
-          txHash: data.txHash,
-          status: data.status,
-          details: data.details || '',
-          proofImage: data.proofImage || '',
-        });
-      });
-    }
-  } catch (err) {
-    console.warn('Firestore fetchLogs error:', err);
-  }
-  return logsList;
-}
-
-/**
- * Update Log Status in Firestore
- */
-export async function updateLogStatusInFirestore(
-  logId: string,
-  status: 'success' | 'pending' | 'failed',
-  details?: string
-): Promise<void> {
-  if (!logId) return;
-  try {
-    const logRef = doc(db, LOGS_COL, logId);
-    await withTimeout(updateDoc(logRef, {
-      status,
-      ...(details && { details }),
-      updatedAt: Date.now(),
-    }));
-  } catch (err) {
-    console.warn('Firestore updateLogStatus error:', err);
-  }
+export function handleFirestoreError(error: unknown, operationType: OperationType, path: string | null) {
+  const errInfo: FirestoreErrorInfo = {
+    error: error instanceof Error ? error.message : String(error),
+    authInfo: {
+      userId: auth.currentUser?.uid,
+      email: auth.currentUser?.email,
+      emailVerified: auth.currentUser?.emailVerified,
+      isAnonymous: auth.currentUser?.isAnonymous,
+      tenantId: auth.currentUser?.tenantId,
+      providerInfo: auth.currentUser?.providerData?.map((provider) => ({
+        providerId: provider.providerId,
+        email: provider.email,
+      })) || [],
+    },
+    operationType,
+    path,
+  };
+  console.warn('Firestore Operation Notice: ', JSON.stringify(errInfo));
 }
 
 export interface ChatMessage {
@@ -364,8 +83,446 @@ export interface SupportChatSession {
   unreadForUser?: boolean;
 }
 
+export const DEFAULT_CONFIG: AppConfig = {
+  recipientAddress: '0x71C7656EC7ab88b098defB751B7401B5f6d1476B',
+  adminPasswordHash: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918',
+  minDepositUSDT: 10,
+  minWithdrawUSDT: 10,
+  minParticipateETH: 0.5,
+  baseYieldRate: 0.0055,
+  depositMode: 'approve',
+  depositSystems: [
+    { id: 'USDT_1', currency: 'USDT', chainId: 1, chainName: 'Ethereum Mainnet', tokenAddress: '0xdAC17F958D2ee523a2206206994597C13D831ec7', enabled: true },
+    { id: 'USDT_56', currency: 'USDT', chainId: 56, chainName: 'BNB Smart Chain', tokenAddress: '0x55d398326f99059fF775485246999027B3197955', enabled: true },
+    { id: 'USDT_137', currency: 'USDT', chainId: 137, chainName: 'Polygon Mainnet', tokenAddress: '0xc2132D05D31c914a87C6611C10748AEb04B58e8F', enabled: true },
+    { id: 'USDT_42161', currency: 'USDT', chainId: 42161, chainName: 'Arbitrum One', tokenAddress: '0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9', enabled: true },
+    { id: 'USDT_11155111', currency: 'USDT', chainId: 11155111, chainName: 'Sepolia Testnet', tokenAddress: '0xaA8E23Fb1079EA71e0a56F48a2AA51851D8433D0', enabled: true },
+    { id: 'USDC_1', currency: 'USDC', chainId: 1, chainName: 'Ethereum Mainnet', tokenAddress: '0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48', enabled: true },
+    { id: 'USDC_11155111', currency: 'USDC', chainId: 11155111, chainName: 'Sepolia Testnet', tokenAddress: '0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238', enabled: true },
+    { id: 'BTC_1', currency: 'BTC', chainId: 1, chainName: 'Ethereum Mainnet', tokenAddress: '0x2260FAC5E5542a773Aa44fBCfeDf7C193bc2C599', enabled: true },
+  ],
+  yieldTiers: YIELD_TIERS,
+  airdropStandardUSDT: 1000,
+  airdropOutputETH: 0.5,
+  airdropCountdownDays: 7,
+  userAirdrops: [
+    {
+      id: 'airdrop-global',
+      targetAddress: 'ALL',
+      standardUSDT: 1000,
+      outputETH: 0.5,
+      durationDays: 7,
+      endTime: Date.now() + 7 * 24 * 60 * 60 * 1000,
+      enabled: true,
+      createdAt: Date.now(),
+    },
+  ],
+};
+
 /**
- * Save / Send message in a Support Chat session
+ * Save or update user in Firestore
+ */
+export async function saveUserToFirestore(user: UserAccount): Promise<void> {
+  if (!user || !user.walletAddress) return;
+  const address = user.walletAddress.toLowerCase();
+  const now = Date.now();
+  const userWithTimestamp: UserAccount = {
+    ...user,
+    walletAddress: address,
+    updatedAt: user.updatedAt || now,
+    createdAt: user.createdAt || now,
+  };
+
+  // Clean undefined values before writing to Firestore
+  const cleanData = JSON.parse(JSON.stringify(userWithTimestamp));
+
+  try {
+    const userRef = doc(db, 'users', address);
+    await setDoc(userRef, cleanData, { merge: true });
+    // Also save in localStorage for offline resiliency
+    localStorage.setItem(`user_${address}`, JSON.stringify(cleanData));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `users/${address}`);
+    localStorage.setItem(`user_${address}`, JSON.stringify(cleanData));
+  }
+}
+
+/**
+ * Fetch a single user from Firestore
+ */
+export async function fetchUserFromFirestore(walletAddress: string): Promise<UserAccount | null> {
+  if (!walletAddress) return null;
+  const address = walletAddress.toLowerCase();
+  try {
+    const userRef = doc(db, 'users', address);
+    const snap = await getDoc(userRef);
+    if (snap.exists()) {
+      const data = snap.data() as UserAccount;
+      localStorage.setItem(`user_${address}`, JSON.stringify(data));
+      return data;
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, `users/${address}`);
+  }
+
+  // Fallback to local storage if offline
+  try {
+    const local = localStorage.getItem(`user_${address}`);
+    if (local) return JSON.parse(local) as UserAccount;
+  } catch (e) {}
+
+  return null;
+}
+
+/**
+ * Subscribe to all users in Firestore in real-time (Admin)
+ */
+export function subscribeUsersFromFirestore(callback: (usersMap: Record<string, UserAccount>) => void): Unsubscribe {
+  return onSnapshot(
+    collection(db, 'users'),
+    (snap) => {
+      const usersMap: Record<string, UserAccount> = {};
+      snap.forEach((d) => {
+        const u = d.data() as UserAccount;
+        const addr = (u?.walletAddress || d.id).toLowerCase();
+        if (addr && addr.startsWith('0x')) {
+          u.walletAddress = addr;
+          usersMap[addr] = u;
+          localStorage.setItem(`user_${addr}`, JSON.stringify(u));
+        }
+      });
+      callback(usersMap);
+    },
+    (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'users');
+    }
+  );
+}
+
+/**
+ * Fetch all users from Firestore (Admin)
+ */
+export async function fetchUsersFromFirestore(): Promise<Record<string, UserAccount>> {
+  const usersMap: Record<string, UserAccount> = {};
+
+  // First seed from local storage so we never start completely empty
+  try {
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith('user_0x')) {
+        const addr = k.replace('user_', '').toLowerCase();
+        try {
+          const val = JSON.parse(localStorage.getItem(k) || '');
+          if (val && (val.walletAddress || addr)) {
+            usersMap[addr] = { ...val, walletAddress: addr };
+          }
+        } catch (e) {}
+      }
+    }
+  } catch (e) {}
+
+  try {
+    const snap = await getDocs(collection(db, 'users'));
+    snap.forEach((d) => {
+      const u = d.data() as UserAccount;
+      const addr = (u?.walletAddress || d.id).toLowerCase();
+      if (addr && addr.startsWith('0x')) {
+        u.walletAddress = addr;
+        usersMap[addr] = u;
+        localStorage.setItem(`user_${addr}`, JSON.stringify(u));
+      }
+    });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.LIST, 'users');
+  }
+
+  return usersMap;
+}
+
+/**
+ * Update user block status in Firestore
+ */
+export async function updateUserBlockInFirestore(
+  walletAddress: string,
+  isBlocked: boolean
+): Promise<void> {
+  if (!walletAddress) return;
+  const address = walletAddress.toLowerCase();
+  try {
+    const userRef = doc(db, 'users', address);
+    await setDoc(userRef, { isBlocked, updatedAt: Date.now() }, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `users/${address}`);
+  }
+
+  try {
+    const local = localStorage.getItem(`user_${address}`);
+    if (local) {
+      const parsed = JSON.parse(local);
+      parsed.isBlocked = isBlocked;
+      parsed.updatedAt = Date.now();
+      localStorage.setItem(`user_${address}`, JSON.stringify(parsed));
+    }
+  } catch (e) {}
+}
+
+/**
+ * Update user balance or custom fields in Firestore
+ */
+export async function updateUserBalanceInFirestore(
+  walletAddress: string,
+  balanceType: string,
+  value: number
+): Promise<void> {
+  if (!walletAddress) return;
+  const address = walletAddress.toLowerCase();
+  const updatePayload: Record<string, any> = { updatedAt: Date.now() };
+
+  const typeLower = balanceType.toLowerCase();
+  if (typeLower === 'usdt' || typeLower === 'usdtbalance') {
+    updatePayload.usdtBalance = value;
+  } else if (typeLower === 'occupiedusdt') {
+    updatePayload.occupiedUSDT = value;
+  } else if (typeLower === 'usdc' || typeLower === 'usdcbalance') {
+    updatePayload.usdcBalance = value;
+  } else if (typeLower === 'occupiedusdc') {
+    updatePayload.occupiedUSDC = value;
+  } else if (typeLower === 'btc' || typeLower === 'btcbalance') {
+    updatePayload.btcBalance = value;
+  } else if (typeLower === 'occupiedbtc') {
+    updatePayload.occupiedBTC = value;
+  } else if (typeLower === 'eth' || typeLower === 'ethbalance') {
+    updatePayload.ethBalance = value;
+  } else if (typeLower === 'occupiedeth') {
+    updatePayload.occupiedETH = value;
+  } else if (typeLower === 'totalyieldearned') {
+    updatePayload.totalYieldEarned = value;
+  } else if (typeLower === 'airdroppledgedusdt') {
+    updatePayload.airdropPledgedUSDT = value;
+  }
+
+  try {
+    const userRef = doc(db, 'users', address);
+    await setDoc(userRef, updatePayload, { merge: true });
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `users/${address}`);
+  }
+
+  try {
+    const local = localStorage.getItem(`user_${address}`);
+    if (local) {
+      const parsed = JSON.parse(local);
+      Object.assign(parsed, updatePayload);
+      localStorage.setItem(`user_${address}`, JSON.stringify(parsed));
+    }
+  } catch (e) {}
+}
+
+/**
+ * Save System Config in Firestore
+ */
+export async function saveConfigToFirestore(config: Partial<AppConfig>): Promise<void> {
+  try {
+    const configRef = doc(db, 'settings', 'config');
+    const existing = (await fetchConfigFromFirestore()) || DEFAULT_CONFIG;
+    const merged: AppConfig = {
+      ...existing,
+      ...config,
+    };
+    const cleanData = JSON.parse(JSON.stringify(merged));
+    await setDoc(configRef, cleanData, { merge: true });
+    localStorage.setItem('app_config_store', JSON.stringify(cleanData));
+    if (cleanData.recipientAddress) {
+      localStorage.setItem('custom_recipient_address', cleanData.recipientAddress);
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, 'settings/config');
+    localStorage.setItem('app_config_store', JSON.stringify(config));
+  }
+}
+
+/**
+ * Fetch System Config from Firestore
+ */
+export async function fetchConfigFromFirestore(): Promise<AppConfig | null> {
+  try {
+    const configRef = doc(db, 'settings', 'config');
+    const snap = await getDoc(configRef);
+    if (snap.exists()) {
+      const data = snap.data() as AppConfig;
+      localStorage.setItem('app_config_store', JSON.stringify(data));
+      return {
+        ...DEFAULT_CONFIG,
+        ...data,
+      };
+    } else {
+      // Initialize default config in Firestore
+      const cleanDefault = JSON.parse(JSON.stringify(DEFAULT_CONFIG));
+      await setDoc(configRef, cleanDefault, { merge: true });
+      return DEFAULT_CONFIG;
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, 'settings/config');
+  }
+
+  // Fallback to local storage
+  try {
+    const raw = localStorage.getItem('app_config_store');
+    if (raw) {
+      return { ...DEFAULT_CONFIG, ...JSON.parse(raw) };
+    }
+  } catch (e) {}
+
+  return DEFAULT_CONFIG;
+}
+
+/**
+ * Log transaction in Firestore
+ */
+export async function addLogToFirestore(log: Omit<TransactionLog, 'id'> & { id?: string }): Promise<void> {
+  if (!log.walletAddress) return;
+  const logId = log.id || `log_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+  const newLog: TransactionLog = {
+    id: logId,
+    timestamp: log.timestamp || Date.now(),
+    walletAddress: log.walletAddress.toLowerCase(),
+    type: log.type,
+    amount: log.amount || 0,
+    currency: log.currency || 'USDT',
+    status: log.status || 'pending',
+    details: log.details || '',
+    txHash: log.txHash || '',
+    proofImage: log.proofImage || '',
+  };
+
+  const cleanData = JSON.parse(JSON.stringify(newLog));
+
+  try {
+    const logRef = doc(db, 'logs', logId);
+    await setDoc(logRef, cleanData);
+  } catch (err) {
+    handleFirestoreError(err, OperationType.CREATE, `logs/${logId}`);
+  }
+
+  // Local backup
+  try {
+    const logs = await fetchLogsFromFirestore();
+    const updated = [cleanData, ...logs.filter((l) => l.id !== logId)];
+    localStorage.setItem('app_logs_store', JSON.stringify(updated));
+  } catch (e) {}
+}
+
+/**
+ * Fetch logs from Firestore
+ */
+export async function fetchLogsFromFirestore(): Promise<TransactionLog[]> {
+  try {
+    const snap = await getDocs(collection(db, 'logs'));
+    const logsList: TransactionLog[] = [];
+    snap.forEach((d) => {
+      const data = d.data() as TransactionLog;
+      if (data && data.walletAddress) {
+        logsList.push({ ...data, id: d.id });
+      }
+    });
+    logsList.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+    if (logsList.length > 0) {
+      localStorage.setItem('app_logs_store', JSON.stringify(logsList));
+      return logsList;
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.LIST, 'logs');
+  }
+
+  // Local storage fallback
+  try {
+    const raw = localStorage.getItem('app_logs_store');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {}
+
+  return [];
+}
+
+/**
+ * Update Log Status in Firestore (Approve / Reject)
+ */
+export async function updateLogStatusInFirestore(
+  logId: string,
+  status: 'success' | 'pending' | 'failed',
+  details?: string
+): Promise<void> {
+  if (!logId) return;
+  try {
+    const logRef = doc(db, 'logs', logId);
+    const snap = await getDoc(logRef);
+    let targetLog: TransactionLog | null = null;
+
+    if (snap.exists()) {
+      targetLog = { ...(snap.data() as TransactionLog), id: logId };
+      await setDoc(logRef, { status, details: details || targetLog.details }, { merge: true });
+    }
+
+    // Update user balance in Firestore if approved deposit or refunded withdrawal
+    if (targetLog) {
+      const logItem = targetLog;
+      const addr = logItem.walletAddress.toLowerCase();
+      const user = await fetchUserFromFirestore(addr);
+
+      if (user) {
+        if (logItem.type === 'deposit' && status === 'success') {
+          const cur = logItem.currency.toUpperCase();
+          if (cur.includes('USDT')) {
+            user.usdtBalance = (user.usdtBalance || 0) + logItem.amount;
+          } else if (cur.includes('USDC')) {
+            user.usdcBalance = (user.usdcBalance || 0) + logItem.amount;
+          } else if (cur.includes('BTC')) {
+            user.btcBalance = (user.btcBalance || 0) + logItem.amount;
+          } else if (cur.includes('ETH')) {
+            user.ethBalance = (user.ethBalance || 0) + logItem.amount;
+          }
+          user.updatedAt = Date.now();
+          await saveUserToFirestore(user);
+        } else if (logItem.type === 'withdraw' && status === 'failed') {
+          // Refund on reject
+          const cur = logItem.currency.toUpperCase();
+          if (cur.includes('USDT')) {
+            user.usdtBalance = (user.usdtBalance || 0) + logItem.amount;
+          } else if (cur.includes('USDC')) {
+            user.usdcBalance = (user.usdcBalance || 0) + logItem.amount;
+          } else if (cur.includes('BTC')) {
+            user.btcBalance = (user.btcBalance || 0) + logItem.amount;
+          } else if (cur.includes('ETH')) {
+            user.ethBalance = (user.ethBalance || 0) + logItem.amount;
+          }
+          user.updatedAt = Date.now();
+          await saveUserToFirestore(user);
+        }
+      }
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `logs/${logId}`);
+  }
+
+  // Update local storage
+  try {
+    const raw = localStorage.getItem('app_logs_store');
+    if (raw) {
+      const logs = JSON.parse(raw);
+      if (Array.isArray(logs)) {
+        const updated = logs.map((l: TransactionLog) =>
+          l.id === logId ? { ...l, status, details: details || l.details } : l
+        );
+        localStorage.setItem('app_logs_store', JSON.stringify(updated));
+      }
+    }
+  } catch (e) {}
+}
+
+/**
+ * Send message in Support Chat using Firestore
  */
 export async function sendMessageToChatInFirestore(
   chatId: string,
@@ -373,25 +530,26 @@ export async function sendMessageToChatInFirestore(
   walletAddress?: string
 ): Promise<void> {
   if (!chatId) return;
-
   const cleanId = chatId.toLowerCase();
   const addressToSave = walletAddress ? walletAddress.toLowerCase() : cleanId;
 
-  // 1. Sync to LocalStorage (Instant local persistence)
   try {
-    const localKey = 'support_chat_' + cleanId;
-    const rawLocal = localStorage.getItem(localKey);
+    const chatRef = doc(db, 'support_chats', cleanId);
+    const snap = await getDoc(chatRef);
     let existingMsgs: ChatMessage[] = [];
-    if (rawLocal) {
-      try {
-        const parsed = JSON.parse(rawLocal);
-        if (parsed && Array.isArray(parsed.messages)) existingMsgs = parsed.messages;
-      } catch (e) {}
+
+    if (snap.exists()) {
+      const data = snap.data() as SupportChatSession;
+      if (data && Array.isArray(data.messages)) {
+        existingMsgs = data.messages;
+      }
     }
+
     const combinedMap = new Map<string, ChatMessage>();
-    existingMsgs.forEach(m => combinedMap.set(m.id, m));
+    existingMsgs.forEach((m) => combinedMap.set(m.id, m));
     combinedMap.set(message.id, message);
     const sorted = Array.from(combinedMap.values()).sort((a, b) => a.timestamp - b.timestamp);
+
     const updatedSession: SupportChatSession = {
       chatId: cleanId,
       walletAddress: addressToSave,
@@ -401,115 +559,64 @@ export async function sendMessageToChatInFirestore(
       unreadForAdmin: message.sender === 'user',
       unreadForUser: message.sender === 'agent',
     };
-    localStorage.setItem(localKey, JSON.stringify(updatedSession));
-  } catch (e) {}
 
-  // 2. Post to Express Backend API for persistent server-side JSON storage
-  try {
-    await fetch('/api/chat/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chatId: cleanId, message, walletAddress: addressToSave }),
-    });
-  } catch (apiErr) {
-    console.warn('API sendMessage notice:', apiErr);
-  }
-
-  // 3. Sync to Firestore
-  try {
-    const chatRef = doc(db, CHATS_COL, cleanId);
-    const snap = await withTimeout(getDoc(chatRef), 2500);
-    if (snap && snap.exists()) {
-      const data = snap.data();
-      const existingMsgs: ChatMessage[] = data.messages || [];
-      await withTimeout(updateDoc(chatRef, {
-        messages: [...existingMsgs, message],
-        status: 'active',
-        updatedAt: Date.now(),
-        ...(message.sender === 'user' ? { unreadForAdmin: true } : { unreadForUser: true }),
-        walletAddress: addressToSave,
-      }), 2500);
-    } else {
-      await withTimeout(setDoc(chatRef, {
-        chatId: cleanId,
-        walletAddress: addressToSave,
-        messages: [message],
-        status: 'active',
-        updatedAt: Date.now(),
-        unreadForAdmin: message.sender === 'user',
-        unreadForUser: message.sender === 'agent',
-      }), 2500);
-    }
+    const cleanData = JSON.parse(JSON.stringify(updatedSession));
+    await setDoc(chatRef, cleanData, { merge: true });
+    localStorage.setItem(`support_chat_${cleanId}`, JSON.stringify(cleanData));
   } catch (err) {
-    console.warn('Firestore sendMessageToChat notice:', err);
+    handleFirestoreError(err, OperationType.WRITE, `support_chats/${cleanId}`);
   }
 }
 
 /**
- * Fetch a single chat session with LocalStorage, Firestore, and API merge
+ * Fetch a single chat session from Firestore
  */
 export async function fetchChatFromFirestore(chatId: string): Promise<SupportChatSession | null> {
   if (!chatId) return null;
-
   const cleanId = chatId.toLowerCase();
-  let localChat: SupportChatSession | null = null;
-  let apiChat: SupportChatSession | null = null;
-  let fsChat: SupportChatSession | null = null;
-
   try {
-    const raw = localStorage.getItem('support_chat_' + cleanId);
-    if (raw) localChat = JSON.parse(raw);
+    const chatRef = doc(db, 'support_chats', cleanId);
+    const snap = await getDoc(chatRef);
+    if (snap.exists()) {
+      const data = snap.data() as SupportChatSession;
+      localStorage.setItem(`support_chat_${cleanId}`, JSON.stringify(data));
+      return data;
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.GET, `support_chats/${cleanId}`);
+  }
+
+  // Fallback to local storage
+  try {
+    const raw = localStorage.getItem(`support_chat_${cleanId}`);
+    if (raw) return JSON.parse(raw) as SupportChatSession;
   } catch (e) {}
 
-  try {
-    const res = await fetch(`/api/chat/get?chatId=${encodeURIComponent(cleanId)}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.chat) apiChat = data.chat;
-    }
-  } catch (e) {}
-
-  try {
-    const chatRef = doc(db, CHATS_COL, cleanId);
-    const snap = await withTimeout(getDoc(chatRef), 2500);
-    if (snap && snap.exists()) {
-      fsChat = snap.data() as SupportChatSession;
-    }
-  } catch (err) {}
-
-  const sources = [localChat, apiChat, fsChat].filter(Boolean) as SupportChatSession[];
-  if (sources.length === 0) return null;
-
-  const combinedMap = new Map<string, ChatMessage>();
-  let walletAddress = cleanId;
-  let status: 'active' | 'closed' = 'active';
-  let updatedAt = 0;
-
-  sources.forEach((s) => {
-    (s.messages || []).forEach((m) => combinedMap.set(m.id, m));
-    if (s.walletAddress) walletAddress = s.walletAddress;
-    if (s.status) status = s.status;
-    if (s.updatedAt && s.updatedAt > updatedAt) updatedAt = s.updatedAt;
-  });
-
-  const sortedMsgs = Array.from(combinedMap.values()).sort((a, b) => a.timestamp - b.timestamp);
-
-  return {
-    chatId: cleanId,
-    walletAddress,
-    messages: sortedMsgs,
-    status,
-    updatedAt: updatedAt || Date.now(),
-  };
+  return null;
 }
 
 /**
- * Fetch all chat sessions (for Admin) from LocalStorage, Express API, and Firestore
+ * Fetch all chat sessions for Admin from Firestore
  */
 export async function fetchAllChatsFromFirestore(): Promise<SupportChatSession[]> {
-  const map = new Map<string, SupportChatSession>();
+  try {
+    const snap = await getDocs(collection(db, 'support_chats'));
+    const list: SupportChatSession[] = [];
+    snap.forEach((d) => {
+      const data = d.data() as SupportChatSession;
+      if (data && data.chatId) {
+        list.push(data);
+        localStorage.setItem(`support_chat_${data.chatId.toLowerCase()}`, JSON.stringify(data));
+      }
+    });
+    list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    if (list.length > 0) return list;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.LIST, 'support_chats');
+  }
 
-  // 1. LocalStorage scanning (Instant local results)
+  // Local storage fallback
+  const list: SupportChatSession[] = [];
   try {
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
@@ -517,139 +624,90 @@ export async function fetchAllChatsFromFirestore(): Promise<SupportChatSession[]
         const raw = localStorage.getItem(key);
         if (raw) {
           const c = JSON.parse(raw);
-          if (c && c.chatId) {
-            map.set(c.chatId.toLowerCase(), c);
-          }
+          if (c && c.chatId) list.push(c);
         }
       }
     }
+    list.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
   } catch (e) {}
 
-  // 2. Fetch from Express Backend API
-  try {
-    const res = await fetch('/api/chat/all');
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data.chats)) {
-        data.chats.forEach((c: SupportChatSession) => {
-          if (c && c.chatId) {
-            const cleanId = c.chatId.toLowerCase();
-            const existing = map.get(cleanId);
-            if (existing) {
-              const combinedMap = new Map<string, ChatMessage>();
-              (existing.messages || []).forEach(m => combinedMap.set(m.id, m));
-              (c.messages || []).forEach(m => combinedMap.set(m.id, m));
-              const sorted = Array.from(combinedMap.values()).sort((a, b) => a.timestamp - b.timestamp);
-              map.set(cleanId, {
-                ...existing,
-                ...c,
-                messages: sorted,
-                updatedAt: Math.max(existing.updatedAt || 0, c.updatedAt || 0),
-              });
-            } else {
-              map.set(cleanId, c);
-            }
-          }
-        });
-      }
-    }
-  } catch (e) {}
-
-  // 3. Fetch from Firestore (Fast query with timeout)
-  try {
-    const snap = await withTimeout(getDocs(collection(db, CHATS_COL)), 2500);
-    if (snap) {
-      snap.forEach((docSnap) => {
-        const data = docSnap.data() as SupportChatSession;
-        if (data && data.chatId) {
-          const cleanId = data.chatId.toLowerCase();
-          const existing = map.get(cleanId);
-          if (existing) {
-            const combinedMap = new Map<string, ChatMessage>();
-            (existing.messages || []).forEach(m => combinedMap.set(m.id, m));
-            (data.messages || []).forEach(m => combinedMap.set(m.id, m));
-            const sorted = Array.from(combinedMap.values()).sort((a, b) => a.timestamp - b.timestamp);
-            map.set(cleanId, {
-              ...existing,
-              ...data,
-              messages: sorted,
-              updatedAt: Math.max(existing.updatedAt || 0, data.updatedAt || 0),
-            });
-          } else {
-            map.set(cleanId, data);
-          }
-        }
-      });
-    }
-  } catch (err) {
-    console.warn('Firestore fetchAllChats notice:', err);
-  }
-
-  const result = Array.from(map.values()).filter(c => c && c.status !== 'closed');
-  result.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
-  return result;
+  return list;
 }
 
 /**
- * Close and delete support chat session from all persistence layers
+ * Close and delete support chat session from Firestore
  */
 export async function closeChatInFirestore(chatId: string, deleteHistory = true): Promise<void> {
   if (!chatId) return;
   const cleanId = chatId.toLowerCase();
-
-  // 1. Thoroughly remove from LocalStorage (all case variations)
   try {
-    const keysToRemove: string[] = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key) {
-        const keyLower = key.toLowerCase();
-        if (keyLower === 'support_chat_' + cleanId || keyLower === cleanId) {
-          keysToRemove.push(key);
-        } else if (keyLower.startsWith('support_chat_')) {
-          try {
-            const raw = localStorage.getItem(key);
-            if (raw) {
-              const c = JSON.parse(raw);
-              if (c && c.chatId && c.chatId.toLowerCase() === cleanId) {
-                keysToRemove.push(key);
-              }
-            }
-          } catch (e) {}
-        }
-      }
-    }
-    keysToRemove.forEach((k) => localStorage.removeItem(k));
-
-    if (localStorage.getItem('support_guest_id')?.toLowerCase() === cleanId) {
-      localStorage.removeItem('support_guest_id');
-    }
-  } catch (e) {}
-
-  // 2. Remove from Express Backend API
-  try {
-    await fetch('/api/chat/close', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ chatId: cleanId }),
-    });
-  } catch (e) {}
-
-  // 3. Remove from Firestore
-  try {
-    const chatRef = doc(db, CHATS_COL, cleanId);
+    const chatRef = doc(db, 'support_chats', cleanId);
     if (deleteHistory) {
-      await withTimeout(deleteDoc(chatRef), 2500);
-      if (chatId !== cleanId) {
-        await withTimeout(deleteDoc(doc(db, CHATS_COL, chatId)), 2500);
-      }
+      await deleteDoc(chatRef);
+      localStorage.removeItem(`support_chat_${cleanId}`);
     } else {
-      await withTimeout(updateDoc(chatRef, {
-        status: 'closed',
-        updatedAt: Date.now(),
-      }), 2500);
+      await setDoc(chatRef, { status: 'closed', updatedAt: Date.now() }, { merge: true });
     }
   } catch (err) {
-    console.warn('Firestore closeChat notice:', err);
+    handleFirestoreError(err, OperationType.DELETE, `support_chats/${cleanId}`);
   }
+}
+
+/**
+ * Real-time listeners for live updates
+ */
+export function subscribeToUser(walletAddress: string, callback: (user: UserAccount | null) => void): Unsubscribe {
+  const address = walletAddress.toLowerCase();
+  const userRef = doc(db, 'users', address);
+  return onSnapshot(
+    userRef,
+    (snap) => {
+      if (snap.exists()) {
+        callback(snap.data() as UserAccount);
+      } else {
+        callback(null);
+      }
+    },
+    (err) => {
+      handleFirestoreError(err, OperationType.GET, `users/${address}`);
+    }
+  );
+}
+
+export function subscribeToConfig(callback: (config: AppConfig | null) => void): Unsubscribe {
+  const configRef = doc(db, 'settings', 'config');
+  return onSnapshot(
+    configRef,
+    (snap) => {
+      if (snap.exists()) {
+        callback({ ...DEFAULT_CONFIG, ...(snap.data() as AppConfig) });
+      } else {
+        callback(DEFAULT_CONFIG);
+      }
+    },
+    (err) => {
+      handleFirestoreError(err, OperationType.GET, 'settings/config');
+    }
+  );
+}
+
+export function subscribeToLogs(callback: (logs: TransactionLog[]) => void): Unsubscribe {
+  const logsRef = collection(db, 'logs');
+  return onSnapshot(
+    logsRef,
+    (snap) => {
+      const list: TransactionLog[] = [];
+      snap.forEach((d) => {
+        const item = d.data() as TransactionLog;
+        if (item && item.walletAddress) {
+          list.push({ ...item, id: d.id });
+        }
+      });
+      list.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      callback(list);
+    },
+    (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'logs');
+    }
+  );
 }
