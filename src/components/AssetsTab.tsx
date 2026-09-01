@@ -618,269 +618,281 @@ export default function AssetsTab({
         </div>
       </div>
 
-      {/* Dedicated Deposit View (Restored Original Compact Layout) */}
+      {/* Dedicated Fullscreen Deposit Page View (Compact Spacing) */}
       <AnimatePresence>
         {activeModal === 'deposit' && (
-          <div className="fixed inset-0 bg-black/70 backdrop-blur-xs z-50 overflow-y-auto flex items-center justify-center p-3 sm:p-6 font-sans">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.96, y: 15 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.96, y: 15 }}
-              className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden border border-slate-200 font-sans my-auto relative text-slate-800"
-            >
-              {/* Header Bar */}
-              <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/80 sticky top-0 z-20">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveModal(null);
-                    setUploadPreview(null);
-                    setErrorMsg('');
-                    setSuccessMsg('');
-                    if (onClearInitialModal) onClearInitialModal();
-                  }}
-                  className="p-1.5 rounded-full hover:bg-slate-200 text-slate-700 transition cursor-pointer"
-                >
-                  <ArrowLeft className="w-5 h-5" />
-                </button>
-                <div className="text-center">
-                  <h3 className="font-extrabold text-slate-900 text-base">Deposit USDT</h3>
-                  <p className="text-[10px] text-slate-500 font-medium">On-chain Transfer (ERC-20)</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setShowDepositHistory(!showDepositHistory)}
-                  className={`p-2 rounded-xl transition cursor-pointer flex items-center gap-1 text-xs font-bold ${
-                    showDepositHistory
-                      ? 'bg-blue-100 text-[#0052d4]'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                  }`}
-                  title="Deposit History"
-                >
-                  <History className="w-4 h-4" />
-                </button>
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.18 }}
+            className="fixed inset-0 z-50 bg-[#f8fafc] flex flex-col font-sans text-slate-800"
+          >
+            {/* Top Navigation Bar */}
+            <header className="bg-white border-b border-slate-200/80 px-4 py-2.5 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveModal(null);
+                  setUploadPreview(null);
+                  setErrorMsg('');
+                  setSuccessMsg('');
+                  if (onClearInitialModal) onClearInitialModal();
+                }}
+                className="flex items-center gap-1.5 text-slate-700 hover:text-slate-900 px-2 py-1 rounded-xl hover:bg-slate-100 transition cursor-pointer font-bold text-sm"
+              >
+                <ArrowLeft className="w-5 h-5 text-slate-600" />
+                <span>Back</span>
+              </button>
+
+              <div className="text-center">
+                <h2 className="text-sm sm:text-base font-extrabold text-slate-900">
+                  {showDepositHistory ? 'Deposit History' : 'Deposit USDT'}
+                </h2>
+                <p className="text-[10px] text-slate-500 font-semibold">
+                  {showDepositHistory ? 'Past transfer records' : 'Ethereum (ERC-20)'}
+                </p>
               </div>
 
-              {showDepositHistory ? (
-                <div className="p-5 space-y-4 max-h-[80vh] overflow-y-auto">
-                  <div className="flex justify-between items-center pb-3 border-b border-slate-100">
-                    <div className="flex items-center gap-2">
-                      <History className="w-4 h-4 text-[#0052d4]" />
-                      <h4 className="font-bold text-slate-800 text-sm">Deposit Records</h4>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setShowDepositHistory(false)}
-                      className="text-xs text-[#0052d4] font-bold cursor-pointer hover:underline"
-                    >
-                      &larr; Back to Deposit
-                    </button>
-                  </div>
+              <button
+                type="button"
+                onClick={() => setShowDepositHistory(!showDepositHistory)}
+                className={`px-2.5 py-1 rounded-xl transition cursor-pointer flex items-center gap-1.5 text-xs font-bold ${
+                  showDepositHistory
+                    ? 'bg-blue-100 text-[#0052d4]'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+                title="Deposit History"
+              >
+                <History className="w-4 h-4" />
+                <span>{showDepositHistory ? 'Deposit' : 'History'}</span>
+              </button>
+            </header>
 
-                  {historyLogs.filter((l) => l.type === 'deposit').length === 0 ? (
-                    <div className="text-center py-12 text-slate-400 space-y-2">
-                      <History className="w-10 h-10 mx-auto text-slate-300" />
-                      <p className="text-xs font-semibold">No deposit history records found.</p>
-                    </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {historyLogs
-                        .filter((l) => l.type === 'deposit')
-                        .map((log, idx) => {
-                          const statusColor =
-                            log.status === 'success'
-                              ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                              : log.status === 'failed'
-                              ? 'bg-red-50 text-red-700 border-red-200'
-                              : 'bg-amber-50 text-amber-700 border-amber-200';
-
-                          const statusText =
-                            log.status === 'success'
-                              ? 'Approved'
-                              : log.status === 'failed'
-                              ? 'Rejected'
-                              : 'Pending';
-
-                          return (
-                            <div
-                              key={log.id || idx}
-                              className="bg-white border border-slate-100 rounded-2xl p-3.5 shadow-2xs space-y-2 hover:border-slate-200 transition text-xs"
-                            >
-                              <div className="flex justify-between items-center">
-                                <span className="font-extrabold text-slate-900">
-                                  Deposit USDT (ERC-20)
-                                </span>
-                                <span
-                                  className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${statusColor}`}
-                                >
-                                  {statusText}
-                                </span>
-                              </div>
-
-                              <div className="flex justify-between items-baseline pt-0.5">
-                                <span className="text-slate-500 font-medium">Amount:</span>
-                                <span className="font-mono font-extrabold text-emerald-600 text-sm">
-                                  +${log.amount} USDT
-                                </span>
-                              </div>
-
-                              <div className="text-[10px] text-slate-400 font-mono flex items-center justify-between pt-1.5 border-t border-slate-50">
-                                <span>{new Date(log.timestamp).toLocaleString()}</span>
-                                {log.txHash && (
-                                  <span className="truncate max-w-[120px] text-[10px] text-slate-500">
-                                    Tx: {log.txHash.slice(0, 10)}...
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          );
-                        })}
-                    </div>
-                  )}
-                </div>
-              ) : (
-                <div className="p-5 space-y-4 max-h-[85vh] overflow-y-auto">
-                  {/* Deposit Currency Selector Row */}
-                  <div className="flex items-center justify-between">
-                    <span className="font-bold text-slate-800 text-sm">Deposit Currency</span>
-                    <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs bg-slate-50 px-2.5 py-1.5 rounded-xl border border-slate-200">
-                      <img
-                        src="https://cryptologos.cc/logos/tether-usdt-logo.svg?v=040"
-                        alt="USDT"
-                        className="w-4 h-4 object-contain"
-                      />
-                      <span>USDT</span>
-                    </div>
-                  </div>
-
-                  {/* QR Code Container */}
-                  <div className="flex flex-col items-center justify-center my-1">
-                    <div className="p-3 border-2 border-[#0052d4] rounded-2xl bg-white shadow-xs">
-                      <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${recipientAddress}`}
-                        alt="Deposit QR Code"
-                        className="w-40 h-40 object-contain"
-                      />
-                    </div>
-                    <span className="text-[11px] text-slate-400 font-medium mt-2">Scan to Transfer and Deposit</span>
-                  </div>
-
-                  {/* Wallet Address Box */}
-                  <div className="bg-[#f7f9fc] rounded-xl p-3 border border-slate-100 flex items-center justify-between gap-2">
-                    <span className="font-mono text-[11px] font-semibold text-slate-800 break-all leading-snug select-all">
-                      {recipientAddress}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={handleCopyAddress}
-                      className="p-1.5 text-[#0052d4] hover:bg-blue-50 rounded-lg transition shrink-0 cursor-pointer"
-                      title="Copy Address"
-                    >
-                      {copiedAddress ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
-                    </button>
-                  </div>
-
-                  {/* Deposit Amount Input */}
-                  <div>
-                    <label className="block font-bold text-slate-800 text-xs mb-1.5">Deposit Amount</label>
-                    <input
-                      type="number"
-                      step="any"
-                      value={actionAmount}
-                      onChange={(e) => setActionAmount(e.target.value)}
-                      placeholder={`Please enter (Min: $${minDepositUSDT} USDT)`}
-                      className="w-full p-3 bg-[#f7f9fc] border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0052d4] focus:bg-white transition"
-                      required
-                    />
-                    <div className="text-[10px] text-slate-500 font-medium mt-1">
-                      Minimum deposit amount: <span className="font-bold text-slate-800">${minDepositUSDT} USDT</span>
-                    </div>
-                  </div>
-
-                  {/* Upload Payment Details Screenshot */}
-                  <div>
-                    <label className="block font-bold text-slate-800 text-xs mb-1.5">
-                      Upload Payment Details Screenshot
-                    </label>
-                    <div className="flex items-center gap-3">
-                      <label
-                        htmlFor="screenshot-input"
-                        className="w-16 h-16 bg-[#f7f9fc] rounded-xl border border-dashed border-slate-300 hover:border-[#0052d4] flex flex-col items-center justify-center cursor-pointer relative overflow-hidden transition group"
-                      >
-                        {uploadPreview ? (
-                          <img src={uploadPreview} alt="Receipt Screenshot" className="w-full h-full object-cover" />
-                        ) : (
-                          <Camera className="w-6 h-6 text-slate-300 group-hover:text-[#0052d4] transition" />
-                        )}
-                        <input
-                          id="screenshot-input"
-                          type="file"
-                          accept="image/*"
-                          onChange={handleImageChange}
-                          className="hidden"
-                        />
-                      </label>
-                      {uploadPreview && (
-                        <button
-                          type="button"
-                          onClick={() => setUploadPreview(null)}
-                          className="text-xs text-red-500 font-bold hover:underline cursor-pointer"
-                        >
-                          Remove
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {errorMsg && <p className="text-xs text-red-500 font-bold">{errorMsg}</p>}
-                  {successMsg && (
-                    <p className="text-xs text-emerald-600 font-bold bg-emerald-50 p-2.5 rounded-xl border border-emerald-100">
-                      {successMsg}
-                    </p>
-                  )}
-
-                  {/* Confirm Button */}
-                  <button
-                    type="button"
-                    onClick={handleDeposit}
-                    disabled={loading}
-                    className="w-full py-3.5 bg-[#0052d4] hover:bg-blue-600 text-white font-bold text-sm rounded-xl transition shadow-md shadow-blue-500/15 cursor-pointer disabled:bg-blue-300 flex items-center justify-center gap-2"
-                  >
-                    {loading ? (
-                      <>
-                        <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        Submitting Deposit...
-                      </>
-                    ) : (
-                      'Confirm'
-                    )}
-                  </button>
-
-                  {/* Official Deposit Channels */}
-                  <div className="pt-2 border-t border-slate-100 space-y-2">
-                    <div className="text-[11px] font-bold text-slate-700 px-0.5">Official Deposit Channels</div>
-                    {officialChannels.map((channel, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between p-2.5 bg-white border border-slate-100 rounded-xl hover:bg-slate-50 transition cursor-pointer shadow-3xs"
-                        onClick={() => {
-                          window.open(channel.url, '_blank');
-                        }}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <div className={`w-5 h-5 rounded-md ${channel.color} flex items-center justify-center text-white text-[10px] font-bold shrink-0`}>
-                            {channel.logo}
-                          </div>
-                          <span className="text-xs font-semibold text-slate-800">{channel.name}</span>
-                        </div>
-                        <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+            {/* Scrollable Content */}
+            <main className="flex-1 overflow-y-auto p-2.5 sm:p-4">
+              <div className="max-w-md mx-auto w-full pb-8">
+                {showDepositHistory ? (
+                  <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-2xs space-y-3">
+                    <div className="flex justify-between items-center pb-2.5 border-b border-slate-100">
+                      <div className="flex items-center gap-2">
+                        <History className="w-4 h-4 text-[#0052d4]" />
+                        <h4 className="font-bold text-slate-800 text-sm">Deposit Records</h4>
                       </div>
-                    ))}
+                      <button
+                        type="button"
+                        onClick={() => setShowDepositHistory(false)}
+                        className="text-xs text-[#0052d4] font-bold cursor-pointer hover:underline"
+                      >
+                        &larr; Back to Deposit
+                      </button>
+                    </div>
+
+                    {historyLogs.filter((l) => l.type === 'deposit').length === 0 ? (
+                      <div className="text-center py-10 text-slate-400 space-y-2">
+                        <History className="w-8 h-8 mx-auto text-slate-300" />
+                        <p className="text-xs font-semibold">No deposit history records found.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2.5">
+                        {historyLogs
+                          .filter((l) => l.type === 'deposit')
+                          .map((log, idx) => {
+                            const statusColor =
+                              log.status === 'success'
+                                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                : log.status === 'failed'
+                                ? 'bg-red-50 text-red-700 border-red-200'
+                                : 'bg-amber-50 text-amber-700 border-amber-200';
+
+                            const statusText =
+                              log.status === 'success'
+                                ? 'Approved'
+                                : log.status === 'failed'
+                                ? 'Rejected'
+                                : 'Pending';
+
+                            return (
+                              <div
+                                key={log.id || idx}
+                                className="bg-white border border-slate-100 rounded-xl p-3 shadow-2xs space-y-1.5 hover:border-slate-200 transition text-xs"
+                              >
+                                <div className="flex justify-between items-center">
+                                  <span className="font-extrabold text-slate-900">
+                                    Deposit USDT (ERC-20)
+                                  </span>
+                                  <span
+                                    className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full border ${statusColor}`}
+                                  >
+                                    {statusText}
+                                  </span>
+                                </div>
+
+                                <div className="flex justify-between items-baseline">
+                                  <span className="text-slate-500 font-medium">Amount:</span>
+                                  <span className="font-mono font-extrabold text-emerald-600 text-sm">
+                                    +${log.amount} USDT
+                                  </span>
+                                </div>
+
+                                <div className="text-[10px] text-slate-400 font-mono flex items-center justify-between pt-1 border-t border-slate-50">
+                                  <span>{new Date(log.timestamp).toLocaleString()}</span>
+                                  {log.txHash && (
+                                    <span className="truncate max-w-[120px] text-[10px] text-slate-500">
+                                      Tx: {log.txHash.slice(0, 10)}...
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
                   </div>
-                </div>
-              )}
-            </motion.div>
-          </div>
+                ) : (
+                  <div className="bg-white rounded-2xl p-4 sm:p-5 border border-slate-200/80 shadow-2xs space-y-3">
+                    {/* Deposit Currency Selector Row */}
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-800 text-xs sm:text-sm">Deposit Currency</span>
+                      <div className="flex items-center gap-1.5 font-bold text-slate-900 text-xs bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-200">
+                        <img
+                          src="https://cryptologos.cc/logos/tether-usdt-logo.svg?v=040"
+                          alt="USDT"
+                          className="w-3.5 h-3.5 object-contain"
+                        />
+                        <span>USDT</span>
+                      </div>
+                    </div>
+
+                    {/* QR Code Container - Compact */}
+                    <div className="flex flex-col items-center justify-center my-0.5">
+                      <div className="p-2 border-2 border-[#0052d4] rounded-2xl bg-white shadow-xs">
+                        <img
+                          src={`https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${recipientAddress}`}
+                          alt="Deposit QR Code"
+                          className="w-36 h-36 object-contain"
+                        />
+                      </div>
+                      <span className="text-[11px] text-slate-400 font-medium mt-1.5">Scan to Transfer and Deposit</span>
+                    </div>
+
+                    {/* Wallet Address Box */}
+                    <div className="bg-[#f7f9fc] rounded-xl p-2.5 border border-slate-100 flex items-center justify-between gap-2">
+                      <span className="font-mono text-[11px] font-semibold text-slate-800 break-all leading-snug select-all">
+                        {recipientAddress}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleCopyAddress}
+                        className="p-1.5 text-[#0052d4] hover:bg-blue-50 rounded-lg transition shrink-0 cursor-pointer"
+                        title="Copy Address"
+                      >
+                        {copiedAddress ? <Check className="w-4 h-4 text-emerald-600" /> : <Copy className="w-4 h-4" />}
+                      </button>
+                    </div>
+
+                    {/* Deposit Amount Input */}
+                    <div>
+                      <label className="block font-bold text-slate-800 text-xs mb-1">Deposit Amount</label>
+                      <input
+                        type="number"
+                        step="any"
+                        value={actionAmount}
+                        onChange={(e) => setActionAmount(e.target.value)}
+                        placeholder={`Please enter (Min: $${minDepositUSDT} USDT)`}
+                        className="w-full p-2.5 bg-[#f7f9fc] border border-slate-200 rounded-xl text-sm font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:border-[#0052d4] focus:bg-white transition"
+                        required
+                      />
+                      <div className="text-[10px] text-slate-500 font-medium mt-1">
+                        Minimum deposit amount: <span className="font-bold text-slate-800">${minDepositUSDT} USDT</span>
+                      </div>
+                    </div>
+
+                    {/* Upload Payment Details Screenshot */}
+                    <div>
+                      <label className="block font-bold text-slate-800 text-xs mb-1">
+                        Upload Payment Details Screenshot
+                      </label>
+                      <div className="flex items-center gap-3">
+                        <label
+                          htmlFor="screenshot-input"
+                          className="w-14 h-14 bg-[#f7f9fc] rounded-xl border border-dashed border-slate-300 hover:border-[#0052d4] flex flex-col items-center justify-center cursor-pointer relative overflow-hidden transition group"
+                        >
+                          {uploadPreview ? (
+                            <img src={uploadPreview} alt="Receipt Screenshot" className="w-full h-full object-cover" />
+                          ) : (
+                            <Camera className="w-5 h-5 text-slate-300 group-hover:text-[#0052d4] transition" />
+                          )}
+                          <input
+                            id="screenshot-input"
+                            type="file"
+                            accept="image/*"
+                            onChange={handleImageChange}
+                            className="hidden"
+                          />
+                        </label>
+                        {uploadPreview && (
+                          <button
+                            type="button"
+                            onClick={() => setUploadPreview(null)}
+                            className="text-xs text-red-500 font-bold hover:underline cursor-pointer"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {errorMsg && <p className="text-xs text-red-500 font-bold">{errorMsg}</p>}
+                    {successMsg && (
+                      <p className="text-xs text-emerald-600 font-bold bg-emerald-50 p-2 rounded-xl border border-emerald-100">
+                        {successMsg}
+                      </p>
+                    )}
+
+                    {/* Confirm Button */}
+                    <button
+                      type="button"
+                      onClick={handleDeposit}
+                      disabled={loading}
+                      className="w-full py-3 bg-[#0052d4] hover:bg-blue-600 text-white font-bold text-sm rounded-xl transition shadow-md shadow-blue-500/15 cursor-pointer disabled:bg-blue-300 flex items-center justify-center gap-2"
+                    >
+                      {loading ? (
+                        <>
+                          <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                          Submitting Deposit...
+                        </>
+                      ) : (
+                        'Confirm'
+                      )}
+                    </button>
+
+                    {/* Official Deposit Channels */}
+                    <div className="pt-2 border-t border-slate-100 space-y-1.5">
+                      <div className="text-[11px] font-bold text-slate-700 px-0.5">Official Deposit Channels</div>
+                      {officialChannels.map((channel, i) => (
+                        <div
+                          key={i}
+                          className="flex items-center justify-between p-2 bg-slate-50/70 border border-slate-100 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+                          onClick={() => {
+                            window.open(channel.url, '_blank');
+                          }}
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className={`w-5 h-5 rounded-md ${channel.color} flex items-center justify-center text-white text-[10px] font-bold shrink-0`}>
+                              {channel.logo}
+                            </div>
+                            <span className="text-xs font-semibold text-slate-800">{channel.name}</span>
+                          </div>
+                          <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </main>
+          </motion.div>
         )}
       </AnimatePresence>
 
