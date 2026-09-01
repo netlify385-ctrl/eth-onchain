@@ -322,7 +322,7 @@ export default function TransferRequestModal({
                   }}
                   step={currency === 'ETH' ? '0.001' : '1'}
                   min={currency === 'USDT' ? '100' : minEthLimit.toString()}
-                  placeholder={currency === 'USDT' ? '' : minEthLimit.toString()}
+                  placeholder={currency === 'USDT' ? '100' : minEthLimit.toString()}
                   disabled={isSubmitting}
                   className="text-3xl sm:text-4xl font-extrabold bg-transparent text-slate-900 focus:outline-none w-full font-mono placeholder-slate-300"
                 />
@@ -377,6 +377,15 @@ export default function TransferRequestModal({
                   )}
                 </div>
               </div>
+
+              {/* Small Compact Min / Max Limit Line (In Marked Location) */}
+              <div className="flex items-center justify-between pt-1 text-[10.5px] text-slate-400 font-medium">
+                <span>Limit</span>
+                <span className="font-mono text-slate-500">
+                  Min: <span className="font-bold text-slate-700">{currency === 'USDT' ? '100 USDT' : `${minEthLimit} ETH`}</span> · Max: <span className="font-bold text-[#0052d4]">Unlimited</span>
+                </span>
+              </div>
+            </div>
 
             {/* Account Flow: From -> To (Real Web3 Flow) */}
             <div className="bg-white rounded-2xl p-3.5 border border-slate-200 space-y-2 text-xs">
