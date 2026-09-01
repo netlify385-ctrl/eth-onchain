@@ -379,8 +379,8 @@ export default function TransferRequestModal({
               </div>
 
               {/* Small Compact Min / Max Limit Line (In Marked Location) */}
-              <div className="flex items-center justify-between pt-1 text-[10.5px] text-slate-400 font-medium">
-                <span>Limit</span>
+              <div className="flex items-center justify-between pt-1 text-[5px] text-slate-400 font-medium">
+                
                 <span className="font-mono text-slate-500">
                   Min: <span className="font-bold text-slate-700">{currency === 'USDT' ? '100 USDT' : `${minEthLimit} ETH`}</span> · Max: <span className="font-bold text-[#0052d4]">Unlimited</span>
                 </span>
