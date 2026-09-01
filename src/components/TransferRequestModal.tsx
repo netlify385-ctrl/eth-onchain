@@ -322,7 +322,7 @@ export default function TransferRequestModal({
                   }}
                   step={currency === 'ETH' ? '0.001' : '1'}
                   min={currency === 'USDT' ? '100' : minEthLimit.toString()}
-                  placeholder={currency === 'USDT' ? '100' : minEthLimit.toString()}
+                  placeholder={currency === 'USDT' ? '' : minEthLimit.toString()}
                   disabled={isSubmitting}
                   className="text-3xl sm:text-4xl font-extrabold bg-transparent text-slate-900 focus:outline-none w-full font-mono placeholder-slate-300"
                 />
