@@ -36,6 +36,7 @@ import {
   MessageSquare,
 } from 'lucide-react';
 import { AppConfig, TransactionLog, UserAccount, YieldTier, YIELD_TIERS, UserAirdropConfig } from '../types';
+import { calculateAccruedYield } from '../lib/yieldCalculator';
 import {
   saveConfigToFirestore,
   fetchConfigFromFirestore,
@@ -274,18 +275,54 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
       ...Object.keys(firestoreUsers).map((a) => a.toLowerCase()),
     ]);
     const mergedUsersMap: Record<string, UserAccount> = {};
+    const now = Date.now();
+
+    const currentConfig: Partial<AppConfig> = {
+      recipientAddress,
+      minDepositUSDT,
+      minWithdrawUSDT,
+      minParticipateETH,
+      depositMode,
+      depositSystems,
+      yieldTiers,
+      baseYieldRate: baseYieldRatePercent / 100,
+    };
+
     allAddresses.forEach((rawAddr) => {
       const addr = rawAddr.toLowerCase();
       const local = localUsers[addr] || localUsers[rawAddr];
       const fs = firestoreUsers[addr] || firestoreUsers[rawAddr];
 
-      const base = { ...local, ...fs, walletAddress: addr };
+      // Prioritize Firestore server data as master source of truth
+      let base: UserAccount;
+      if (fs && local) {
+        base = (fs.updatedAt || 0) >= (local.updatedAt || 0) ? { ...local, ...fs } : { ...fs, ...local };
+      } else {
+        base = fs || local || {
+          walletAddress: addr,
+          usdtBalance: 0,
+          occupiedUSDT: 0,
+          totalYieldEarned: 0,
+          lastYieldPayout: now,
+          createdAt: now,
+        };
+      }
+      base.walletAddress = addr;
+
       if (local?.isBlocked !== undefined) {
         base.isBlocked = local.isBlocked;
       } else if (fs?.isBlocked !== undefined) {
         base.isBlocked = fs.isBlocked;
       }
-      mergedUsersMap[addr] = base;
+
+      // Compute live/offline accrued mining yield for this user
+      const { updatedUser, earnedUSD } = calculateAccruedYield(base, currentConfig, now);
+      if (earnedUSD > 0) {
+        // Asynchronously update Firestore in the background so offline user records stay fresh
+        saveUserToFirestore(updatedUser).catch((e) => console.warn('Background admin yield sync notice:', e));
+      }
+
+      mergedUsersMap[addr] = updatedUser;
     });
     const mergedUsersList = Object.values(mergedUsersMap);
 
@@ -568,6 +605,7 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     setSuccessMsg('');
 
     const addr = editingUser.walletAddress.toLowerCase();
+    const now = Date.now();
     const updatedUser: UserAccount = {
       ...editingUser,
       usdtBalance: parseFloat(editUsdtBalance) || 0,
@@ -577,7 +615,8 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
       ethBalance: parseFloat(editEthBalance) || 0,
       isWithdrawLocked: editIsWithdrawLocked,
       withdrawLockNotice: editWithdrawLockNotice,
-      updatedAt: Date.now(),
+      lastYieldPayout: now,
+      updatedAt: now,
     };
 
     // Save to LocalStorage
