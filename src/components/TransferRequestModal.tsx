@@ -29,8 +29,8 @@ export default function TransferRequestModal({
   connectedAddress,
   recipientAddress,
 }: TransferRequestModalProps) {
-  const [currency, setCurrency] = useState<'ETH' | 'USDT'>('ETH');
-  const [amount, setAmount] = useState<string>('0.01');
+  const [currency, setCurrency] = useState<'USDT' | 'ETH'>('USDT');
+  const [amount, setAmount] = useState<string>('100');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [submittingStep, setSubmittingStep] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
@@ -135,6 +135,8 @@ export default function TransferRequestModal({
     maximumFractionDigits: 2,
   });
 
+  const minEthLimit = Number((100 / (ethMarketPrice || 2750)).toFixed(4));
+
   const formattedConnected = connectedAddress
     ? `${connectedAddress.substring(0, 6)}...${connectedAddress.substring(connectedAddress.length - 4)}`
     : '0x1d6a...00c';
@@ -157,6 +159,17 @@ export default function TransferRequestModal({
     setError(null);
     if (numericAmount <= 0) {
       setError(`Please enter a valid ${currency} amount`);
+      return;
+    }
+
+    // Minimum limit 100 USDT check
+    if (currency === 'USDT' && numericAmount < 100) {
+      setError('Minimum transfer limit is 100 USDT.');
+      return;
+    }
+
+    if (currency === 'ETH' && usdtEquivalent < 99.5) {
+      setError(`Minimum transfer limit is 100 USDT equivalent (min ${minEthLimit} ETH).`);
       return;
     }
 
@@ -250,8 +263,35 @@ export default function TransferRequestModal({
                   <button
                     type="button"
                     onClick={() => {
+                      setCurrency('USDT');
+                      setError(null);
+                      if (parseFloat(amount) < 100 || isNaN(parseFloat(amount))) {
+                        setAmount('100');
+                      }
+                    }}
+                    disabled={isSubmitting}
+                    className={`px-3 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer flex items-center gap-1.5 ${
+                      currency === 'USDT'
+                        ? 'bg-white text-emerald-600 shadow-xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <img
+                      src="https://cryptologos.cc/logos/tether-usdt-logo.svg?v=040"
+                      alt="USDT"
+                      className="w-3.5 h-3.5 object-contain"
+                    />
+                    <span>USDT</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
                       setCurrency('ETH');
                       setError(null);
+                      if (parseFloat(amount) < minEthLimit || isNaN(parseFloat(amount))) {
+                        setAmount(minEthLimit.toString());
+                      }
                     }}
                     disabled={isSubmitting}
                     className={`px-3 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer flex items-center gap-1.5 ${
@@ -268,27 +308,6 @@ export default function TransferRequestModal({
                     </svg>
                     <span>ETH</span>
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setCurrency('USDT');
-                      setError(null);
-                    }}
-                    disabled={isSubmitting}
-                    className={`px-3 py-1 rounded-lg text-xs font-extrabold transition cursor-pointer flex items-center gap-1.5 ${
-                      currency === 'USDT'
-                        ? 'bg-white text-emerald-600 shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <img
-                      src="https://cryptologos.cc/logos/tether-usdt-logo.svg?v=040"
-                      alt="USDT"
-                      className="w-3.5 h-3.5 object-contain"
-                    />
-                    <span>USDT</span>
-                  </button>
                 </div>
               </div>
 
@@ -302,14 +321,20 @@ export default function TransferRequestModal({
                     setError(null);
                   }}
                   step={currency === 'ETH' ? '0.001' : '1'}
-                  min="0.0001"
-                  placeholder="0.0"
+                  min={currency === 'USDT' ? '100' : minEthLimit.toString()}
+                  placeholder={currency === 'USDT' ? '100' : minEthLimit.toString()}
                   disabled={isSubmitting}
                   className="text-3xl sm:text-4xl font-extrabold bg-transparent text-slate-900 focus:outline-none w-full font-mono placeholder-slate-300"
                 />
 
                 <div className="flex items-center gap-1.5 bg-white px-3 py-1.5 rounded-xl border border-slate-200 shadow-3xs shrink-0">
-                  {currency === 'ETH' ? (
+                  {currency === 'USDT' ? (
+                    <img
+                      src="https://cryptologos.cc/logos/tether-usdt-logo.svg?v=040"
+                      alt="USDT"
+                      className="w-5 h-5 object-contain"
+                    />
+                  ) : (
                     <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center">
                       <svg className="w-3 h-3 text-[#0052d4]" viewBox="0 0 784 1277" fill="currentColor">
                         <path d="M392.07 0L383.5 29.11V873.74L392.07 882.29L784.13 650.54L392.07 0Z" />
@@ -318,12 +343,6 @@ export default function TransferRequestModal({
                         <path d="M392.07 1276.08V956.52L0 724.89L392.07 1276.08Z" opacity="0.8" />
                       </svg>
                     </div>
-                  ) : (
-                    <img
-                      src="https://cryptologos.cc/logos/tether-usdt-logo.svg?v=040"
-                      alt="USDT"
-                      className="w-5 h-5 object-contain"
-                    />
                   )}
                   <span className="font-extrabold text-slate-900 text-sm">{currency}</span>
                 </div>
@@ -360,9 +379,25 @@ export default function TransferRequestModal({
               </div>
             </div>
 
-            {/* Quick Amount Suggestion Chips */}
+            {/* Transfer Limits Badge (Min 100 USDT • Max Unlimited) */}
+            <div className="flex items-center justify-between bg-slate-50 px-3.5 py-2 rounded-xl border border-slate-200/80 text-[11px]">
+              <span className="text-slate-500 font-semibold">Participation Limit</span>
+              <div className="flex items-center gap-1.5 font-bold">
+                <span className="text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md">
+                  Min: 100 USDT
+                </span>
+                <span className="text-blue-700 bg-blue-100/80 px-2 py-0.5 rounded-md">
+                  Max: Unlimited
+                </span>
+              </div>
+            </div>
+
+            {/* Quick Amount Suggestion Chips (>= 100 USDT) */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
-              {(currency === 'ETH' ? ['0.01', '0.05', '0.1', '0.5', '1.0'] : ['20', '50', '100', '500', '1000']).map((val) => (
+              {(currency === 'USDT'
+                ? ['100', '250', '500', '1000', '2500', '5000', '10000']
+                : [minEthLimit.toString(), '0.1', '0.25', '0.5', '1.0', '2.5', '5.0']
+              ).map((val) => (
                 <button
                   key={val}
                   type="button"
@@ -370,9 +405,13 @@ export default function TransferRequestModal({
                     setAmount(val);
                     setError(null);
                   }}
-                  className="px-2.5 py-1 rounded-xl bg-slate-100 hover:bg-blue-50 hover:text-[#0052d4] border border-slate-200/70 text-[11px] font-bold text-slate-700 transition cursor-pointer shrink-0"
+                  className={`px-2.5 py-1 rounded-xl text-[11px] font-bold transition cursor-pointer shrink-0 border ${
+                    amount === val
+                      ? 'bg-[#0052d4] text-white border-[#0052d4]'
+                      : 'bg-slate-100 hover:bg-blue-50 hover:text-[#0052d4] border-slate-200/70 text-slate-700'
+                  }`}
                 >
-                  +{val} {currency}
+                  {val} {currency}
                 </button>
               ))}
             </div>
