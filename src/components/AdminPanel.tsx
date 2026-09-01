@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   ShieldAlert,
@@ -42,6 +42,7 @@ import {
   fetchConfigFromFirestore,
   fetchUserFromFirestore,
   fetchUsersFromFirestore,
+  subscribeUsersFromFirestore,
   updateUserBalanceInFirestore,
   updateUserBlockInFirestore,
   fetchLogsFromFirestore,
@@ -167,15 +168,8 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     setLoading(false);
   };
 
-  // Live periodic refresh for Admin Dashboard stats when authorized
-  useEffect(() => {
-    if (!isAuthorized) return;
-    fetchAdminStats(password, true);
-    const interval = setInterval(() => {
-      fetchAdminStats(password, false);
-    }, 4000);
-    return () => clearInterval(interval);
-  }, [isAuthorized, password]);
+  // Master persistent users dictionary so user list never flickers or drops
+  const masterUsersMapRef = useRef<Record<string, UserAccount>>({});
 
   // Helper to scan local storage users
   const loadLocalUsers = (): Record<string, UserAccount> => {
@@ -187,23 +181,27 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
           const raw = localStorage.getItem(key);
           if (raw) {
             const u = JSON.parse(raw);
-            if (u && u.walletAddress) {
-              localUsersMap[u.walletAddress.toLowerCase()] = u;
+            if (u && (u.walletAddress || key)) {
+              const addr = (u.walletAddress || key.replace('user_', '')).toLowerCase();
+              localUsersMap[addr] = { ...u, walletAddress: addr };
             }
           }
         }
       }
       const conn = localStorage.getItem('connectedAddress');
-      if (conn && conn !== 'null' && conn !== 'undefined' && !localUsersMap[conn.toLowerCase()]) {
-        localUsersMap[conn.toLowerCase()] = {
-          walletAddress: conn.toLowerCase(),
-          usdtBalance: 0,
-          occupiedUSDT: 0,
-          totalYieldEarned: 0,
-          lastYieldPayout: Date.now(),
-          createdAt: Date.now(),
-          isBlocked: false,
-        };
+      if (conn && conn !== 'null' && conn !== 'undefined') {
+        const cAddr = conn.toLowerCase();
+        if (!localUsersMap[cAddr]) {
+          localUsersMap[cAddr] = {
+            walletAddress: cAddr,
+            usdtBalance: 0,
+            occupiedUSDT: 0,
+            totalYieldEarned: 0,
+            lastYieldPayout: Date.now(),
+            createdAt: Date.now(),
+            isBlocked: false,
+          };
+        }
       }
     } catch (e) {
       console.warn('Failed scanning local storage users:', e);
@@ -218,6 +216,97 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     const hash = parseInt(clean.slice(-8), 16);
     return (isNaN(hash) ? 10000000 : (hash % 89999999 + 10000000)).toString();
   };
+
+  // Recalculate and update current users list from master store
+  const refreshUsersListFromMaster = (additionalUsers?: Record<string, UserAccount>) => {
+    const localUsers = loadLocalUsers();
+    
+    // Merge into master store
+    Object.entries(localUsers).forEach(([addr, u]) => {
+      const cleanAddr = addr.toLowerCase();
+      if (!masterUsersMapRef.current[cleanAddr]) {
+        masterUsersMapRef.current[cleanAddr] = u;
+      } else {
+        masterUsersMapRef.current[cleanAddr] = {
+          ...u,
+          ...masterUsersMapRef.current[cleanAddr],
+        };
+      }
+    });
+
+    if (additionalUsers) {
+      Object.entries(additionalUsers).forEach(([addr, u]) => {
+        const cleanAddr = (u.walletAddress || addr).toLowerCase();
+        const existing = masterUsersMapRef.current[cleanAddr];
+        if (!existing) {
+          masterUsersMapRef.current[cleanAddr] = { ...u, walletAddress: cleanAddr };
+        } else {
+          // If firestore data has updated timestamp, take latest
+          masterUsersMapRef.current[cleanAddr] = {
+            ...existing,
+            ...u,
+            walletAddress: cleanAddr,
+          };
+        }
+      });
+    }
+
+    const now = Date.now();
+    const currentConfig: Partial<AppConfig> = {
+      recipientAddress,
+      minDepositUSDT,
+      minWithdrawUSDT,
+      minParticipateETH,
+      depositMode,
+      depositSystems,
+      yieldTiers,
+      baseYieldRate: baseYieldRatePercent / 100,
+    };
+
+    const calculatedList: UserAccount[] = (Object.values(masterUsersMapRef.current) as UserAccount[]).map((base: UserAccount) => {
+      const { updatedUser } = calculateAccruedYield(base, currentConfig, now);
+      return updatedUser;
+    });
+
+    let totalUSDT = 0;
+    calculatedList.forEach((u) => {
+      totalUSDT += u.occupiedUSDT || 0;
+    });
+
+    setUsersList(calculatedList);
+    setTotalUsers(calculatedList.length);
+    setTotals({ usdt: totalUSDT });
+  };
+
+  // Real-time Firestore subscription + live periodic refresh for Admin Dashboard stats
+  useEffect(() => {
+    if (!isAuthorized) return;
+
+    // 1. Initial full fetch
+    fetchAdminStats(password, true);
+
+    // 2. Real-time Firestore live users subscription
+    const unsubscribeUsers = subscribeUsersFromFirestore((fsUsersMap) => {
+      refreshUsersListFromMaster(fsUsersMap);
+    });
+
+    // 3. Periodic refresh for logs and active yield ticker
+    const interval = setInterval(() => {
+      refreshUsersListFromMaster();
+      fetchLogsFromFirestore()
+        .then((fsLogs) => {
+          if (fsLogs && fsLogs.length > 0) {
+            setLogs(fsLogs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
+          }
+        })
+        .catch((e) => console.warn('Periodic logs fetch notice:', e));
+    }, 4000);
+
+    return () => {
+      unsubscribeUsers();
+      clearInterval(interval);
+    };
+  }, [isAuthorized, password]);
 
   // Fetch Admin Stats
   const fetchAdminStats = async (adminPass: string, isInitial: boolean = false) => {
@@ -269,72 +358,10 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
       console.warn('fetchLogs notice:', err);
     }
 
-    const localUsers = loadLocalUsers();
-    const allAddresses = new Set([
-      ...Object.keys(localUsers).map((a) => a.toLowerCase()),
-      ...Object.keys(firestoreUsers).map((a) => a.toLowerCase()),
-    ]);
-    const mergedUsersMap: Record<string, UserAccount> = {};
-    const now = Date.now();
-
-    const currentConfig: Partial<AppConfig> = {
-      recipientAddress,
-      minDepositUSDT,
-      minWithdrawUSDT,
-      minParticipateETH,
-      depositMode,
-      depositSystems,
-      yieldTiers,
-      baseYieldRate: baseYieldRatePercent / 100,
-    };
-
-    allAddresses.forEach((rawAddr) => {
-      const addr = rawAddr.toLowerCase();
-      const local = localUsers[addr] || localUsers[rawAddr];
-      const fs = firestoreUsers[addr] || firestoreUsers[rawAddr];
-
-      // Prioritize Firestore server data as master source of truth
-      let base: UserAccount;
-      if (fs && local) {
-        base = (fs.updatedAt || 0) >= (local.updatedAt || 0) ? { ...local, ...fs } : { ...fs, ...local };
-      } else {
-        base = fs || local || {
-          walletAddress: addr,
-          usdtBalance: 0,
-          occupiedUSDT: 0,
-          totalYieldEarned: 0,
-          lastYieldPayout: now,
-          createdAt: now,
-        };
-      }
-      base.walletAddress = addr;
-
-      if (local?.isBlocked !== undefined) {
-        base.isBlocked = local.isBlocked;
-      } else if (fs?.isBlocked !== undefined) {
-        base.isBlocked = fs.isBlocked;
-      }
-
-      // Compute live/offline accrued mining yield for this user
-      const { updatedUser, earnedUSD } = calculateAccruedYield(base, currentConfig, now);
-      if (earnedUSD > 0) {
-        // Asynchronously update Firestore in the background so offline user records stay fresh
-        saveUserToFirestore(updatedUser).catch((e) => console.warn('Background admin yield sync notice:', e));
-      }
-
-      mergedUsersMap[addr] = updatedUser;
-    });
-    const mergedUsersList = Object.values(mergedUsersMap);
-
-    let totalUSDT = 0;
-    mergedUsersList.forEach(u => {
-      totalUSDT += (u.occupiedUSDT || 0);
-    });
-
-    setUsersList(mergedUsersList);
-    setTotalUsers(mergedUsersList.length);
-    setTotals({ usdt: totalUSDT });
-    setLogs(fsLogs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
+    refreshUsersListFromMaster(firestoreUsers);
+    if (fsLogs && fsLogs.length > 0) {
+      setLogs(fsLogs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
+    }
   };
 
   // Real-time Support Chat Polling for Admin
