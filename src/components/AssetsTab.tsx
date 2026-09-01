@@ -1143,7 +1143,7 @@ export default function AssetsTab({
                       {/* Fee & Handling Summary */}
                       <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
                         <span>Handling Fee: <strong className="text-emerald-600 font-bold">0% (Free)</strong></span>
-                        <span>Time: <strong className="text-slate-700 font-bold">1 - 5 mins</strong></span>
+                        <span>Time: <strong className="text-slate-700 font-bold">24 - 72 hours</strong></span>
                       </div>
                     </div>
 
