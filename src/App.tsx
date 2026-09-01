@@ -13,6 +13,7 @@ import SupportChat from './components/SupportChat';
 import ConnectGate from './components/ConnectGate';
 import { UserAccount, AppConfig, YieldTier, YIELD_TIERS } from './types';
 import { saveUserToFirestore, fetchConfigFromFirestore, fetchUserFromFirestore, addLogToFirestore } from './lib/firebase';
+import { calculateAccruedYield } from './lib/yieldCalculator';
 import { useLanguage } from './lib/i18n';
 
 export default function App() {
@@ -182,68 +183,9 @@ export default function App() {
     if (user.commissionEarned === undefined) user.commissionEarned = 0;
 
     // Live update client-side accrued yield
-    const now = Date.now();
-    const lastPayout = user.lastYieldPayout || now;
-    const elapsedSeconds = Math.max(0, (now - lastPayout) / 1000);
-    let yieldAccrued = false;
-
-    // Total node mining assets include deposited / wallet balance and occupied staking balance
-    const totalUSDT = (user.occupiedUSDT || 0) + (user.usdtBalance || 0);
-    const totalUSDC = (user.occupiedUSDC || 0) + (user.usdcBalance || 0);
-    const totalBTC = (user.occupiedBTC || 0) + (user.btcBalance || 0);
-    const totalETH = (user.occupiedETH || 0) + (user.ethBalance || 0);
-
-    const totalNodeValueUSD = totalUSDT + totalUSDC + (totalBTC * 65000) + (totalETH * 3500);
-
-    if (elapsedSeconds > 0 && totalNodeValueUSD > 0) {
-      const activeTiers = config?.yieldTiers && config.yieldTiers.length > 0 ? config.yieldTiers : YIELD_TIERS;
-      const sorted = [...activeTiers].sort((a, b) => a.minAmount - b.minAmount);
-
-      let matchedTier: YieldTier | undefined = undefined;
-      for (let i = 0; i < sorted.length; i++) {
-        const tier = sorted[i];
-        const isLast = i === sorted.length - 1;
-        if (totalNodeValueUSD >= tier.minAmount && (totalNodeValueUSD < tier.maxAmount || isLast)) {
-          matchedTier = tier;
-          break;
-        }
-      }
-
-      let dailyRate = 0.024; // 2.4% daily default
-      if (config?.baseYieldRate && config.baseYieldRate > 0) {
-        dailyRate = config.baseYieldRate;
-      }
-      if (matchedTier) {
-        let yMin = matchedTier.yieldMin ?? 0.024;
-        let yMax = matchedTier.yieldMax ?? yMin;
-        if (yMin > 1) yMin = yMin / 100;
-        if (yMax > 1) yMax = yMax / 100;
-        dailyRate = (yMin + yMax) / 2;
-      } else if (totalNodeValueUSD < (sorted[0]?.minAmount || 100)) {
-        let minR = sorted[0]?.yieldMin ?? 0.020;
-        if (minR > 1) minR = minR / 100;
-        dailyRate = minR;
-      } else {
-        const highest = sorted[sorted.length - 1];
-        let hMin = highest?.yieldMin ?? 0.040;
-        let hMax = highest?.yieldMax ?? 0.050;
-        if (hMin > 1) hMin = hMin / 100;
-        if (hMax > 1) hMax = hMax / 100;
-        dailyRate = (hMin + hMax) / 2;
-      }
-
-      const earnedUSD = totalNodeValueUSD * dailyRate * (elapsedSeconds / 86400);
-
-      if (earnedUSD > 0) {
-        // Node mining profit is added directly to USDT available balance
-        user.totalYieldEarned = (user.totalYieldEarned || 0) + earnedUSD;
-        user.usdtBalance = (user.usdtBalance || 0) + earnedUSD;
-        yieldAccrued = true;
-      }
-      user.lastYieldPayout = now;
-    } else if (!user.lastYieldPayout) {
-      user.lastYieldPayout = now;
-    }
+    const { updatedUser, earnedUSD } = calculateAccruedYield(user, config);
+    user = updatedUser;
+    const yieldAccrued = earnedUSD > 0;
 
     setUserAccount(user);
     localStorage.setItem(localKey, JSON.stringify(user));
