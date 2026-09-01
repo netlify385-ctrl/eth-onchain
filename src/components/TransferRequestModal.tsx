@@ -1,6 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { SlidersHorizontal, Info, AlertTriangle, ShieldCheck, Check, Copy, Wallet, ArrowDown } from 'lucide-react';
+import {
+  ArrowLeft,
+  Info,
+  AlertTriangle,
+  ShieldCheck,
+  Check,
+  Copy,
+  Wallet,
+  ArrowRight,
+  Sparkles,
+} from 'lucide-react';
 import { ethers } from 'ethers';
 
 interface TransferRequestModalProps {
@@ -155,7 +165,7 @@ export default function TransferRequestModal({
     }
 
     setIsSubmitting(true);
-    setSubmittingStep('Waiting for wallet approval...');
+    setSubmittingStep('Waiting for wallet signature...');
     try {
       await onConfirm(numericAmount, recipientAddress, currency, usdtEquivalent);
       onClose();
@@ -181,7 +191,6 @@ export default function TransferRequestModal({
       ) {
         setError('Insufficient balance in your wallet to cover transfer and gas fees.');
       } else {
-        // Provide clear, clean error without raw JSON dumps
         setError('Insufficient balance or wallet transfer cancelled. Please check your wallet and try again.');
       }
     } finally {
@@ -192,217 +201,288 @@ export default function TransferRequestModal({
 
   return (
     <AnimatePresence>
-      <div className="fixed inset-0 bg-black/80 backdrop-blur-xs z-50 flex items-center justify-center p-4 font-sans text-white">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95, y: 10 }}
-          animate={{ opacity: 1, scale: 1, y: 0 }}
-          exit={{ opacity: 0, scale: 0.95 }}
-          className="bg-[#121316] w-full max-w-sm rounded-3xl p-5 shadow-2xl border border-neutral-800 text-white relative overflow-hidden max-h-[92vh] overflow-y-auto"
-        >
-          {/* Top Bar */}
-          <div className="flex justify-between items-center mb-3">
-            <div className="flex items-center gap-1.5 text-[11px] text-emerald-400 font-bold bg-emerald-500/10 px-2.5 py-1 rounded-full border border-emerald-500/20">
-              <ShieldCheck className="w-3.5 h-3.5" />
-              <span>Direct Node Transfer</span>
-            </div>
-            <h2 className="font-semibold text-base text-white tracking-tight">Transfer Request</h2>
-            <button
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="text-neutral-400 hover:text-white transition p-1 cursor-pointer disabled:opacity-50"
-              title="Close"
-            >
-              <SlidersHorizontal className="w-4 h-4" />
-            </button>
-          </div>
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: 10 }}
+        transition={{ duration: 0.18 }}
+        className="fixed inset-0 z-50 bg-[#f8fafc] flex flex-col font-sans text-slate-800"
+      >
+        {/* Top Header Navigation */}
+        <header className="bg-white border-b border-slate-200/80 px-4 py-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-2xs">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSubmitting}
+            className="flex items-center gap-1.5 text-slate-700 hover:text-slate-900 px-2.5 py-1.5 rounded-xl hover:bg-slate-100 transition cursor-pointer font-bold text-sm disabled:opacity-50"
+          >
+            <ArrowLeft className="w-5 h-5 text-slate-600" />
+            <span>Back</span>
+          </button>
 
-          {/* Currency Toggle */}
-          <div className="flex justify-center mb-3">
-            <div className="bg-[#1c1d22] p-1 rounded-xl flex items-center gap-1 border border-neutral-800">
-              <button
-                type="button"
-                onClick={() => {
-                  setCurrency('ETH');
-                  setError(null);
-                }}
-                disabled={isSubmitting}
-                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                  currency === 'ETH' ? 'bg-[#3b82f6] text-white shadow-sm' : 'text-neutral-400 hover:text-white'
-                }`}
-              >
-                ETH
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setCurrency('USDT');
-                  setError(null);
-                }}
-                disabled={isSubmitting}
-                className={`px-4 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                  currency === 'USDT' ? 'bg-[#009393] text-white shadow-sm' : 'text-neutral-400 hover:text-white'
-                }`}
-              >
-                USDT
-              </button>
+          <div className="text-center">
+            <h2 className="text-base font-extrabold text-slate-900">Transfer Request</h2>
+            <div className="flex items-center justify-center gap-1.5 mt-0.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <p className="text-[11px] text-slate-500 font-semibold">Direct Node Participation</p>
             </div>
           </div>
 
-          {/* Logo & Amount Header */}
-          <div className="flex flex-col items-center mb-3">
-            <div
-              className={`w-12 h-12 rounded-full flex items-center justify-center mb-2 shadow-lg ${
-                currency === 'ETH' ? 'bg-[#3b82f6] shadow-blue-500/20' : 'bg-[#009393] shadow-emerald-500/20'
-              }`}
-            >
-              {currency === 'ETH' ? (
-                <svg className="w-6 h-8 text-white" viewBox="0 0 784 1277" fill="currentColor">
-                  <path d="M392.07 0L383.5 29.11V873.74L392.07 882.29L784.13 650.54L392.07 0Z" />
-                  <path d="M392.07 0L0 650.54L392.07 882.29V472.35V0Z" opacity="0.8" />
-                  <path d="M392.07 956.52L387.24 962.41V1271.67L392.07 1276.08L784.37 724.89L392.07 956.52Z" />
-                  <path d="M392.07 1276.08V956.52L0 724.89L392.07 1276.08Z" opacity="0.8" />
-                </svg>
-              ) : (
-                <span className="font-extrabold text-white text-xl">₮</span>
-              )}
+          <div className="flex items-center gap-1 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-700 text-[11px] font-bold">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Secure</span>
+          </div>
+        </header>
+
+        {/* Scrollable Page Body */}
+        <main className="flex-1 overflow-y-auto p-4 sm:p-6">
+          <div className="max-w-md mx-auto w-full space-y-4 pb-12">
+            {/* Main Transfer Amount Card */}
+            <div className="bg-white rounded-3xl p-5 sm:p-6 border border-slate-200/80 shadow-2xs space-y-4">
+              {/* Currency Selector Pill */}
+              <div>
+                <label className="block text-xs font-extrabold text-slate-500 uppercase tracking-wider mb-2">
+                  Select Currency
+                </label>
+                <div className="grid grid-cols-2 gap-2.5 bg-slate-100/80 p-1.5 rounded-2xl border border-slate-200/60">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrency('ETH');
+                      setError(null);
+                    }}
+                    disabled={isSubmitting}
+                    className={`py-2.5 rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center justify-center gap-2 ${
+                      currency === 'ETH'
+                        ? 'bg-white text-[#0052d4] shadow-xs border border-slate-200'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                    }`}
+                  >
+                    <div className="w-5 h-5 rounded-full bg-blue-100 flex items-center justify-center">
+                      <svg className="w-3 h-3 text-[#0052d4]" viewBox="0 0 784 1277" fill="currentColor">
+                        <path d="M392.07 0L383.5 29.11V873.74L392.07 882.29L784.13 650.54L392.07 0Z" />
+                        <path d="M392.07 0L0 650.54L392.07 882.29V472.35V0Z" opacity="0.8" />
+                        <path d="M392.07 956.52L387.24 962.41V1271.67L392.07 1276.08L784.37 724.89L392.07 956.52Z" />
+                        <path d="M392.07 1276.08V956.52L0 724.89L392.07 1276.08Z" opacity="0.8" />
+                      </svg>
+                    </div>
+                    <span>ETH (Ethereum)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrency('USDT');
+                      setError(null);
+                    }}
+                    disabled={isSubmitting}
+                    className={`py-2.5 rounded-xl text-xs font-extrabold transition cursor-pointer flex items-center justify-center gap-2 ${
+                      currency === 'USDT'
+                        ? 'bg-white text-emerald-600 shadow-xs border border-slate-200'
+                        : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
+                    }`}
+                  >
+                    <img
+                      src="https://cryptologos.cc/logos/tether-usdt-logo.svg?v=040"
+                      alt="USDT"
+                      className="w-4 h-4 object-contain"
+                    />
+                    <span>USDT (ERC-20)</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Amount Input Box */}
+              <div className="bg-[#f8fafc] rounded-2xl p-4 border border-slate-200 text-center space-y-2">
+                <div className="flex justify-between items-center px-1">
+                  <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                    Transfer Amount
+                  </span>
+                  {currentWalletBal !== null && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (currency === 'ETH') {
+                          // Reserve a small gas buffer for ETH
+                          const maxEth = Math.max(0, (walletEthBalance || 0) - 0.003);
+                          setAmount(maxEth.toFixed(4));
+                        } else {
+                          setAmount((walletUsdtBalance || 0).toString());
+                        }
+                      }}
+                      className="text-[10px] font-extrabold text-[#0052d4] hover:underline cursor-pointer"
+                    >
+                      Use Max
+                    </button>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-center gap-2 pt-1 pb-1">
+                  <input
+                    type="number"
+                    value={amount}
+                    onChange={(e) => {
+                      setAmount(e.target.value);
+                      setError(null);
+                    }}
+                    step={currency === 'ETH' ? '0.001' : '1'}
+                    min="0.0001"
+                    placeholder="0.00"
+                    disabled={isSubmitting}
+                    className="text-3xl sm:text-4xl font-extrabold bg-transparent text-center text-slate-900 focus:outline-none w-full max-w-[200px] border-b-2 border-slate-300 focus:border-[#0052d4] font-mono py-1 transition"
+                  />
+                  <span className="text-xl font-bold text-slate-700 shrink-0">{currency}</span>
+                </div>
+
+                <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 rounded-full border border-emerald-200">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                  <span className="text-xs font-mono font-bold text-emerald-700">
+                    ≈ ${usdtDisplay} USDT
+                  </span>
+                </div>
+
+                {/* Live Wallet Balance */}
+                {currentWalletBal !== null && (
+                  <div className="text-[11px] text-slate-500 font-semibold pt-1 flex items-center justify-center gap-1.5">
+                    <Wallet className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Available Balance:</span>
+                    <span className="font-mono font-extrabold text-slate-800">
+                      {currentWalletBal.toFixed(4)} {currency}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              {/* Quick Amount Suggestion Chips */}
+              <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+                {(currency === 'ETH' ? ['0.01', '0.05', '0.1', '0.5', '1.0'] : ['50', '100', '500', '1000', '5000']).map((val) => (
+                  <button
+                    key={val}
+                    type="button"
+                    onClick={() => {
+                      setAmount(val);
+                      setError(null);
+                    }}
+                    className="px-3 py-1 rounded-xl bg-slate-100 hover:bg-blue-50 hover:text-[#0052d4] border border-slate-200/80 text-[11px] font-bold text-slate-700 transition cursor-pointer shrink-0"
+                  >
+                    {val} {currency}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Custom Amount Input Box */}
-            <div className="w-full bg-[#18191e] rounded-2xl p-3.5 border border-neutral-800 text-center mb-2">
-              <label className="text-[10px] text-neutral-400 font-bold uppercase tracking-wider block mb-1">
-                Enter {currency} Transfer Amount
-              </label>
-              <div className="flex items-center justify-center gap-1.5">
-                <input
-                  type="number"
-                  value={amount}
-                  onChange={(e) => {
-                    setAmount(e.target.value);
-                    setError(null);
-                  }}
-                  step={currency === 'ETH' ? '0.001' : '1'}
-                  min="0.0001"
-                  placeholder="0.00"
-                  disabled={isSubmitting}
-                  className="text-2xl sm:text-3xl font-extrabold bg-transparent text-center text-white focus:outline-none w-full max-w-[200px] border-b border-neutral-700/60 focus:border-blue-500 font-mono py-0.5"
-                />
-                <span className="text-xl font-bold text-white shrink-0">{currency}</span>
+            {/* Routing: From -> To Card */}
+            <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/80 shadow-2xs space-y-3">
+              <div className="text-xs font-extrabold text-slate-500 uppercase tracking-wider px-1">
+                Routing Summary
               </div>
-              <div className="text-xs font-semibold text-emerald-400 mt-1.5 font-mono">
-                ≈ {usdtDisplay} USDT
+
+              <div className="bg-[#f8fafc] rounded-2xl p-3.5 border border-slate-200 flex items-center justify-between gap-2 text-xs">
+                {/* From Wallet */}
+                <div className="flex-1 min-w-0">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                    From (Your Wallet)
+                  </span>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 shrink-0" />
+                    <span className="font-mono font-bold text-slate-800 truncate">{formattedConnected}</span>
+                  </div>
+                </div>
+
+                <div className="text-slate-400 px-2 shrink-0">
+                  <ArrowRight className="w-4 h-4 text-slate-400" />
+                </div>
+
+                {/* To Recipient */}
+                <div className="flex-1 min-w-0 text-right">
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">
+                    To (Node Address)
+                  </span>
+                  <button
+                    type="button"
+                    onClick={handleCopyRecipient}
+                    className="inline-flex items-center gap-1 font-mono font-bold text-slate-800 hover:text-[#0052d4] transition cursor-pointer"
+                    title="Click to copy address"
+                  >
+                    <span className="truncate">{formattedRecipient}</span>
+                    {copied ? (
+                      <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    ) : (
+                      <Copy className="w-3.5 h-3.5 text-slate-400 hover:text-[#0052d4] shrink-0" />
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
 
-            {/* Wallet Balance Preview */}
-            {currentWalletBal !== null && (
-              <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-1">
-                <Wallet className="w-3 h-3 text-slate-400" />
-                <span>Wallet Balance:</span>
-                <span className="font-mono font-bold text-white">
-                  {currentWalletBal.toFixed(4)} {currency}
+            {/* Details Breakdown Card */}
+            <div className="bg-white rounded-3xl p-4 sm:p-5 border border-slate-200/80 shadow-2xs space-y-2.5 text-xs">
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 font-medium">Network</span>
+                <span className="font-bold text-slate-800 flex items-center gap-1">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600" />
+                  Ethereum Mainnet (ERC-20)
                 </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 font-medium">Transfer Type</span>
+                <span className="font-bold text-slate-800">Direct Node Transfer</span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-slate-500 font-medium">Total Amount</span>
+                <span className="font-mono font-extrabold text-[#0052d4] text-sm">
+                  {amount || '0'} {currency}
+                </span>
+              </div>
+            </div>
+
+            {/* Error Message Display */}
+            {error && (
+              <div className="p-3.5 bg-red-50 border border-red-200 rounded-2xl text-red-700 text-xs text-left flex items-start gap-2.5">
+                <AlertTriangle className="w-4 h-4 text-red-500 shrink-0 mt-0.5" />
+                <div className="font-semibold leading-relaxed">{error}</div>
               </div>
             )}
-          </div>
 
-          {/* From -> To Section Box (Clean Labels: From and To only) */}
-          <div className="bg-[#1c1d22] rounded-2xl p-3.5 mb-3 border border-neutral-800/80 flex items-center justify-between text-xs">
-            <div className="flex flex-col gap-1">
-              <span className="text-neutral-400 font-semibold text-[11px]">From</span>
-              <div className="flex items-center gap-1.5 bg-[#27282d] px-2.5 py-1 rounded-full text-white text-[11px] font-medium border border-neutral-700/50">
-                <div className="w-3 h-3 rounded-full bg-gradient-to-tr from-amber-400 via-emerald-400 to-indigo-500" />
-                <span className="font-mono">{formattedConnected}</span>
+            {/* Submitting Status */}
+            {submittingStep && (
+              <div className="p-3 bg-blue-50 border border-blue-200 rounded-2xl text-[#0052d4] text-xs text-center flex items-center justify-center gap-2">
+                <div className="w-4 h-4 border-2 border-[#0052d4] border-t-transparent rounded-full animate-spin" />
+                <span className="font-bold">{submittingStep}</span>
               </div>
-            </div>
+            )}
 
-            <div className="text-neutral-500 px-1">
-              <ArrowDown className="w-4 h-4 -rotate-90 text-neutral-400" />
-            </div>
-
-            <div className="flex flex-col items-end gap-1">
-              <span className="text-neutral-400 font-semibold text-[11px]">To</span>
+            {/* Bottom Actions */}
+            <div className="pt-2 space-y-2">
               <button
                 type="button"
-                onClick={handleCopyRecipient}
-                className="flex items-center gap-1 text-neutral-200 font-mono text-[11px] font-semibold hover:text-white transition cursor-pointer"
-                title="Click to copy recipient address"
+                onClick={handleConfirmClick}
+                disabled={isSubmitting}
+                className="w-full py-4 bg-[#0052d4] hover:bg-blue-700 text-white font-extrabold text-sm rounded-2xl transition shadow-lg shadow-blue-500/25 cursor-pointer disabled:bg-blue-300 flex items-center justify-center gap-2"
               >
-                <span className="w-3.5 h-3.5 rounded-full bg-neutral-700 flex items-center justify-center text-[9px]">
-                  {copied ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
-                </span>
-                <span>{formattedRecipient}</span>
+                {isSubmitting ? (
+                  <>
+                    <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Confirming in Wallet...</span>
+                  </>
+                ) : (
+                  <span>Transfer Now</span>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                disabled={isSubmitting}
+                className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl transition cursor-pointer text-xs disabled:opacity-50"
+              >
+                Cancel
               </button>
             </div>
           </div>
-
-          {/* Estimated Changes Box */}
-          <div className="bg-[#1c1d22] rounded-2xl p-3 mb-3 border border-neutral-800/80 text-xs">
-            <div className="flex items-center justify-between text-neutral-400 font-medium mb-1.5">
-              <div className="flex items-center gap-1">
-                <span>Estimated transfer</span>
-                <Info className="w-3 h-3 text-neutral-500" />
-              </div>
-              <span className="text-[10px] text-emerald-400 font-bold">Ethereum Mainnet</span>
-            </div>
-
-            <div className="flex justify-between items-center">
-              <span className="text-neutral-300">Direct transfer to node</span>
-              <div className="text-right">
-                <div className="flex items-center gap-1 justify-end">
-                  <span className="bg-red-500/20 text-red-400 font-mono text-[11px] font-bold px-1.5 py-0.5 rounded">
-                    - {amount}
-                  </span>
-                  <span className="font-bold text-white">{currency}</span>
-                </div>
-                <div className="text-[10px] text-emerald-400 font-mono mt-0.5">
-                  ≈ {usdtDisplay} USDT
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {error && (
-            <div className="mb-3 p-3 bg-red-500/10 border border-red-500/30 rounded-2xl text-red-300 text-xs text-left flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-              <div className="font-medium leading-relaxed">{error}</div>
-            </div>
-          )}
-
-          {submittingStep && (
-            <div className="mb-3 p-2.5 bg-blue-500/10 border border-blue-500/30 rounded-xl text-blue-300 text-xs text-center flex items-center justify-center gap-2">
-              <div className="w-3.5 h-3.5 border-2 border-blue-400 border-t-transparent rounded-full animate-spin" />
-              <span>{submittingStep}</span>
-            </div>
-          )}
-
-          {/* Action Buttons */}
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={onClose}
-              disabled={isSubmitting}
-              className="py-3 bg-[#27282d] hover:bg-[#323339] text-white font-semibold rounded-2xl transition cursor-pointer text-sm disabled:opacity-50"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleConfirmClick}
-              disabled={isSubmitting}
-              className="py-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white font-bold rounded-2xl transition cursor-pointer text-sm flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 disabled:opacity-50"
-            >
-              {isSubmitting ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Transferring...</span>
-                </div>
-              ) : (
-                'Transfer Now'
-              )}
-            </button>
-          </div>
-        </motion.div>
-      </div>
+        </main>
+      </motion.div>
     </AnimatePresence>
   );
 }
+
