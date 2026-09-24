@@ -16,20 +16,62 @@ interface FinanceTabProps {
 export default function FinanceTab({ userAccount, config, onDisconnectClick, onParticipateClick, onOpenSupportChat }: FinanceTabProps) {
   const { t, setLanguage, langName } = useLanguage();
   const activeTiers = config?.yieldTiers && config.yieldTiers.length > 0 ? config.yieldTiers : YIELD_TIERS;
-  const dailyRate = config?.baseYieldRate !== undefined ? config.baseYieldRate : 0.05;
+  const userTotalUSDT = (userAccount?.occupiedUSDT || 0) + (userAccount?.usdtBalance || 0);
+  const userTotalUSDC = (userAccount?.occupiedUSDC || 0) + (userAccount?.usdcBalance || 0);
+  const userTotalBTC = (userAccount?.occupiedBTC || 0) + (userAccount?.btcBalance || 0);
+  const userTotalETH = (userAccount?.occupiedETH || 0) + (userAccount?.ethBalance || 0);
+  const totalUserNodeUSD = userTotalUSDT + userTotalUSDC + (userTotalBTC * 65000) + (userTotalETH * 3500);
 
-  const userMiningBalance = (userAccount?.occupiedUSDT || 0) > 0 ? (userAccount?.occupiedUSDT || 0) : (userAccount?.usdtBalance || 0);
-  const dailyUsdProfit = userMiningBalance * (dailyRate || 0.022);
+  const sortedTiers = [...activeTiers].sort((a, b) => a.minAmount - b.minAmount);
+  let userMatchedTier: YieldTier | undefined = undefined;
+  for (let i = 0; i < sortedTiers.length; i++) {
+    const tier = sortedTiers[i];
+    const isLast = i === sortedTiers.length - 1;
+    if (totalUserNodeUSD >= tier.minAmount && (totalUserNodeUSD < tier.maxAmount || isLast)) {
+      userMatchedTier = tier;
+      break;
+    }
+  }
+
+  let calculatedDailyRate = 0.0165;
+  if (userMatchedTier) {
+    let yMin = userMatchedTier.yieldMin ?? 0.0150;
+    let yMax = userMatchedTier.yieldMax ?? yMin;
+    if (yMin > 1) yMin = yMin / 100;
+    if (yMax > 1) yMax = yMax / 100;
+    if (userMatchedTier.maxAmount > userMatchedTier.minAmount) {
+      const progress = Math.min(
+        1,
+        Math.max(0, (totalUserNodeUSD - userMatchedTier.minAmount) / (userMatchedTier.maxAmount - userMatchedTier.minAmount))
+      );
+      calculatedDailyRate = yMin + (yMax - yMin) * progress;
+    } else {
+      calculatedDailyRate = (yMin + yMax) / 2;
+    }
+  } else if (totalUserNodeUSD < (sortedTiers[0]?.minAmount || 100)) {
+    let minR = sortedTiers[0]?.yieldMin ?? 0.0150;
+    if (minR > 1) minR = minR / 100;
+    calculatedDailyRate = minR;
+  } else {
+    const highest = sortedTiers[sortedTiers.length - 1];
+    let hMin = highest?.yieldMin ?? 0.0300;
+    let hMax = highest?.yieldMax ?? 0.0400;
+    if (hMin > 1) hMin = hMin / 100;
+    if (hMax > 1) hMax = hMax / 100;
+    calculatedDailyRate = (hMin + hMax) / 2;
+  }
+
+  const dailyUsdProfit = totalUserNodeUSD * calculatedDailyRate;
   const dailyEthProfit = dailyUsdProfit / 3500;
   const totalUsdEarned = userAccount?.totalYieldEarned || 0;
   const totalEthEarned = (userAccount?.ethBalance && userAccount.ethBalance > 0) ? userAccount.ethBalance : (totalUsdEarned / 3500);
 
   const formatYieldRate = (row: YieldTier) => {
-    let yMin = row.yieldMin ?? 0.0200;
-    let yMax = row.yieldMax ?? 0.0240;
+    let yMin = row.yieldMin ?? 0.0150;
+    let yMax = row.yieldMax ?? 0.0180;
     if (yMin <= 1) yMin = yMin * 100;
     if (yMax <= 1) yMax = yMax * 100;
-    return `${yMin.toFixed(2)} ~ ${yMax.toFixed(2)}`;
+    return `${yMin.toFixed(2)}% ~ ${yMax.toFixed(2)}%`;
   };
   const [activeTab, setActiveTab] = useState<'management' | 'reward_pool'>('management');
   const [userIncome, setUserIncome] = useState(6196796.06);
@@ -111,12 +153,6 @@ export default function FinanceTab({ userAccount, config, onDisconnectClick, onP
 
     return () => clearInterval(interval);
   }, []);
-
-  const userTotalUSDT = (userAccount?.occupiedUSDT || 0) + (userAccount?.usdtBalance || 0);
-  const userTotalUSDC = (userAccount?.occupiedUSDC || 0) + (userAccount?.usdcBalance || 0);
-  const userTotalBTC = (userAccount?.occupiedBTC || 0) + (userAccount?.btcBalance || 0);
-  const userTotalETH = (userAccount?.occupiedETH || 0) + (userAccount?.ethBalance || 0);
-  const totalUserNodeUSD = userTotalUSDT + userTotalUSDC + (userTotalBTC * 65000) + (userTotalETH * 3500);
 
   return (
     <div className="bg-slate-50 min-h-screen pb-24 font-sans text-slate-800">
@@ -336,22 +372,32 @@ export default function FinanceTab({ userAccount, config, onDisconnectClick, onP
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-400 text-slate-800 font-medium">
-                    {activeTiers.map((row, idx) => (
-                      <tr key={idx} className="border-b border-slate-400 last:border-b-0">
-                        <td className="py-1.5 px-1.5 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-medium whitespace-nowrap">{row.level}</td>
-                        <td className="py-1.5 px-1.5 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-mono text-[10.5px] sm:text-xs whitespace-nowrap">
-                          {row.minAmount} ~ {row.maxAmount}
-                        </td>
-                        <td className="py-1.5 px-1.5 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-mono text-[10.5px] sm:text-xs whitespace-nowrap">
-                          {formatYieldRate(row)}
-                        </td>
-                        {idx === 0 && (
-                          <td rowSpan={activeTiers.length} className="py-1.5 px-2 sm:py-2 sm:px-3 text-slate-800 font-bold align-middle bg-white whitespace-nowrap text-[11px] sm:text-xs border-slate-400">
-                            {activeTiers[0]?.unit || 'USDT'}
+                    {activeTiers.map((row, idx) => {
+                      const isCurrent = userMatchedTier?.level === row.level && totalUserNodeUSD >= 100;
+                      return (
+                        <tr key={idx} className={`border-b border-slate-400 last:border-b-0 ${isCurrent ? 'bg-blue-50/80 font-bold' : ''}`}>
+                          <td className="py-1.5 px-1.5 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-medium whitespace-nowrap">
+                            <span className="inline-flex items-center justify-center gap-1">
+                              {row.level}
+                              {isCurrent && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block shrink-0" title="Your Current Tier" />
+                              )}
+                            </span>
                           </td>
-                        )}
-                      </tr>
-                    ))}
+                          <td className="py-1.5 px-1.5 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-mono text-[10.5px] sm:text-xs whitespace-nowrap">
+                            {row.minAmount} ~ {row.maxAmount}
+                          </td>
+                          <td className="py-1.5 px-1.5 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-mono text-[10.5px] sm:text-xs whitespace-nowrap">
+                            {formatYieldRate(row)}
+                          </td>
+                          {idx === 0 && (
+                            <td rowSpan={activeTiers.length} className="py-1.5 px-2 sm:py-2 sm:px-3 text-slate-800 font-bold align-middle bg-white whitespace-nowrap text-[11px] sm:text-xs border-slate-400">
+                              {activeTiers[0]?.unit || 'USDT'}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -445,6 +491,21 @@ export default function FinanceTab({ userAccount, config, onDisconnectClick, onP
                       </div>
                     </div>
                   </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-blue-100 text-xs">
+                    <div>
+                      <div className="text-[10px] text-slate-500 font-medium">Current Tier & Yield Rate</div>
+                      <div className="font-bold text-blue-700 text-xs font-mono mt-0.5">
+                        {userMatchedTier?.level || 'VIP'} ({(calculatedDailyRate * 100).toFixed(2)}% / Day)
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-slate-500 font-medium">Est. 24h Profit</div>
+                      <div className="font-bold text-emerald-600 text-xs font-mono mt-0.5">
+                        +${dailyUsdProfit.toFixed(4)} <span className="text-[10px] font-sans font-normal text-slate-500">USDT</span>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
@@ -488,22 +549,32 @@ export default function FinanceTab({ userAccount, config, onDisconnectClick, onP
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-400 text-slate-800 font-medium">
-                    {activeTiers.map((row, idx) => (
-                      <tr key={idx} className="border-b border-slate-400 last:border-b-0">
-                        <td className="py-1.5 px-1.5 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-medium whitespace-nowrap">{row.level}</td>
-                        <td className="py-1.5 px-1.5 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-mono text-[10.5px] sm:text-xs whitespace-nowrap">
-                          {row.minAmount} ~ {row.maxAmount}
-                        </td>
-                        <td className="py-1.5 px-1.5 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-mono text-[10.5px] sm:text-xs whitespace-nowrap">
-                          {formatYieldRate(row)}
-                        </td>
-                        {idx === 0 && (
-                          <td rowSpan={activeTiers.length} className="py-1.5 px-2 sm:py-2 sm:px-3 text-slate-800 font-bold align-middle bg-white whitespace-nowrap text-[11px] sm:text-xs border-slate-400">
-                            {activeTiers[0]?.unit || 'USDT'}
+                    {activeTiers.map((row, idx) => {
+                      const isCurrent = userMatchedTier?.level === row.level && totalUserNodeUSD >= 100;
+                      return (
+                        <tr key={idx} className={`border-b border-slate-400 last:border-b-0 ${isCurrent ? 'bg-blue-50/80 font-bold' : ''}`}>
+                          <td className="py-1.5 px-1.5 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-medium whitespace-nowrap">
+                            <span className="inline-flex items-center justify-center gap-1">
+                              {row.level}
+                              {isCurrent && (
+                                <span className="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block shrink-0" title="Your Current Tier" />
+                              )}
+                            </span>
                           </td>
-                        )}
-                      </tr>
-                    ))}
+                          <td className="py-1.5 px-1.5 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-mono text-[10.5px] sm:text-xs whitespace-nowrap">
+                            {row.minAmount} ~ {row.maxAmount}
+                          </td>
+                          <td className="py-1.5 px-1.5 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-mono text-[10.5px] sm:text-xs whitespace-nowrap">
+                            {formatYieldRate(row)}
+                          </td>
+                          {idx === 0 && (
+                            <td rowSpan={activeTiers.length} className="py-1.5 px-2 sm:py-2 sm:px-3 text-slate-800 font-bold align-middle bg-white whitespace-nowrap text-[11px] sm:text-xs border-slate-400">
+                              {activeTiers[0]?.unit || 'USDT'}
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
