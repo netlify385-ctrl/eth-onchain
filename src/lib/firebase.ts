@@ -89,7 +89,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   minDepositUSDT: 10,
   minWithdrawUSDT: 10,
   minParticipateETH: 0.5,
-  baseYieldRate: 0.0055,
+  baseYieldRate: 0.0165,
   depositMode: 'approve',
   depositSystems: [
     { id: 'USDT_1', currency: 'USDT', chainId: 1, chainName: 'Ethereum Mainnet', tokenAddress: '0xdAC17F958D2ee523a2206206994597C13D831ec7', enabled: true },
@@ -350,6 +350,19 @@ export async function fetchConfigFromFirestore(): Promise<AppConfig | null> {
     const snap = await getDoc(configRef);
     if (snap.exists()) {
       const data = snap.data() as AppConfig;
+      // Upgrade tiers if old defaults were saved previously
+      if (
+        !data.yieldTiers ||
+        !Array.isArray(data.yieldTiers) ||
+        data.yieldTiers.length === 0 ||
+        data.yieldTiers[0]?.yieldMin === 0.02 ||
+        data.yieldTiers[0]?.yieldMin === 0.005 ||
+        data.yieldTiers[0]?.yieldMin === 0.05
+      ) {
+        data.yieldTiers = YIELD_TIERS;
+        data.baseYieldRate = 0.0165;
+        setDoc(configRef, { yieldTiers: YIELD_TIERS, baseYieldRate: 0.0165 }, { merge: true }).catch(() => {});
+      }
       localStorage.setItem('app_config_store', JSON.stringify(data));
       return {
         ...DEFAULT_CONFIG,

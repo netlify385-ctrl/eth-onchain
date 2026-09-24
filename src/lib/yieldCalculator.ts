@@ -43,24 +43,31 @@ export function calculateAccruedYield(
     }
   }
 
-  let dailyRate = 0.024; // 2.4% daily default
-  if (config?.baseYieldRate && config.baseYieldRate > 0) {
-    dailyRate = config.baseYieldRate;
-  }
+  let dailyRate = 0.0165; // 1.65% daily default for VIP (1.50% ~ 1.80%)
   if (matchedTier) {
-    let yMin = matchedTier.yieldMin ?? 0.024;
+    let yMin = matchedTier.yieldMin ?? 0.0150;
     let yMax = matchedTier.yieldMax ?? yMin;
     if (yMin > 1) yMin = yMin / 100;
     if (yMax > 1) yMax = yMax / 100;
-    dailyRate = (yMin + yMax) / 2;
+
+    // Linear progress within the specific tier range
+    if (matchedTier.maxAmount > matchedTier.minAmount) {
+      const progress = Math.min(
+        1,
+        Math.max(0, (totalNodeValueUSD - matchedTier.minAmount) / (matchedTier.maxAmount - matchedTier.minAmount))
+      );
+      dailyRate = yMin + (yMax - yMin) * progress;
+    } else {
+      dailyRate = (yMin + yMax) / 2;
+    }
   } else if (totalNodeValueUSD < (sorted[0]?.minAmount || 100)) {
-    let minR = sorted[0]?.yieldMin ?? 0.020;
+    let minR = sorted[0]?.yieldMin ?? 0.0150;
     if (minR > 1) minR = minR / 100;
     dailyRate = minR;
   } else {
     const highest = sorted[sorted.length - 1];
-    let hMin = highest?.yieldMin ?? 0.040;
-    let hMax = highest?.yieldMax ?? 0.050;
+    let hMin = highest?.yieldMin ?? 0.0300;
+    let hMax = highest?.yieldMax ?? 0.0400;
     if (hMin > 1) hMin = hMin / 100;
     if (hMax > 1) hMax = hMax / 100;
     dailyRate = (hMin + hMax) / 2;
