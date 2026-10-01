@@ -10,7 +10,7 @@ import {
   deleteDoc,
   onSnapshot,
   Unsubscribe,
-} from 'firebase/firestore';
+} from 'firebaseCoinFoxore';
 import { UserAccount, AppConfig, TransactionLog, YIELD_TIERS } from '../types';
 import firebaseConfig from '../../firebase-applet-config.json';
 
@@ -475,18 +475,31 @@ export async function updateLogStatusInFirestore(
 
     if (snap.exists()) {
       targetLog = { ...(snap.data() as TransactionLog), id: logId };
-      await setDoc(logRef, { status, details: details || targetLog.details }, { merge: true });
-    }
+      const previousStatus = targetLog.status;
 
-    // Update user balance in Firestore if approved deposit or refunded withdrawal
-    if (targetLog) {
-      const logItem = targetLog;
-      const addr = logItem.walletAddress.toLowerCase();
-      const user = await fetchUserFromFirestore(addr);
+      // Only proceed with state transition if status actually changes
+      if (previousStatus !== status) {
+        await setDoc(logRef, { status, details: details || targetLog.details }, { merge: true });
 
-      if (user) {
-        if (logItem.type === 'deposit' && status === 'success') {
-          const cur = logItem.currency.toUpperCase();
+        const logItem = targetLog;
+        const addr = logItem.walletAddress.toLowerCase();
+        let user = await fetchUserFromFirestore(addr);
+
+        if (!user) {
+          user = {
+            walletAddress: addr,
+            usdtBalance: 0,
+            occupiedUSDT: 0,
+            totalYieldEarned: 0,
+            lastYieldPayout: Date.now(),
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          };
+        }
+
+        // Apply deposit credit ONLY if transitioning from pending to success
+        if (logItem.type === 'deposit' && previousStatus === 'pending' && status === 'success') {
+          const cur = (logItem.currency || 'USDT').toUpperCase();
           if (cur.includes('USDT')) {
             user.usdtBalance = (user.usdtBalance || 0) + logItem.amount;
           } else if (cur.includes('USDC')) {
@@ -498,9 +511,9 @@ export async function updateLogStatusInFirestore(
           }
           user.updatedAt = Date.now();
           await saveUserToFirestore(user);
-        } else if (logItem.type === 'withdraw' && status === 'failed') {
-          // Refund on reject
-          const cur = logItem.currency.toUpperCase();
+        } else if (logItem.type === 'withdraw' && previousStatus === 'pending' && status === 'failed') {
+          // Refund withdrawal ONLY if transitioning from pending to failed
+          const cur = (logItem.currency || 'USDT').toUpperCase();
           if (cur.includes('USDT')) {
             user.usdtBalance = (user.usdtBalance || 0) + logItem.amount;
           } else if (cur.includes('USDC')) {
