@@ -237,8 +237,11 @@ export default function App() {
     // 4. Periodically save accrued yield to Firestore every 30 seconds
     const fsSyncInterval = setInterval(() => {
       setUserAccount((current) => {
-        if (current && (current.dailyProfitEnabled || (current.occupiedUSDT || 0) > 0)) {
-          saveUserToFirestore(current).catch(() => {});
+        if (current) {
+          const totalAssets = (Number(current.usdtBalance) || 0) + (Number(current.occupiedUSDT) || 0);
+          if (current.dailyProfitEnabled || totalAssets > 0) {
+            saveUserToFirestore(current).catch(() => {});
+          }
         }
         return current;
       });
@@ -478,9 +481,9 @@ export default function App() {
       }
 
       const updated = { ...user };
-      if (curUpper === 'USDT') updated.usdtBalance = (updated.usdtBalance || 0) - amount;
-      else if (curUpper === 'USDC') updated.usdcBalance = (updated.usdcBalance || 0) - amount;
-      else if (curUpper === 'BTC') updated.btcBalance = (updated.btcBalance || 0) - amount;
+      if (curUpper === 'USDT') updated.usdtBalance = Math.max(0, (Number(updated.usdtBalance) || 0) - amount);
+      else if (curUpper === 'USDC') updated.usdcBalance = Math.max(0, (Number(updated.usdcBalance) || 0) - amount);
+      else if (curUpper === 'BTC') updated.btcBalance = Math.max(0, (Number(updated.btcBalance) || 0) - amount);
       updated.updatedAt = Date.now();
 
       setUserAccount(updated);
@@ -514,10 +517,10 @@ export default function App() {
       const liveBtcPrice = savedBtc ? parseFloat(savedBtc) : 65000;
 
       let available = 0;
-      if (from === 'USDT') available = user.usdtBalance || 0;
-      else if (from === 'USDC') available = user.usdcBalance || 0;
-      else if (from === 'BTC') available = user.btcBalance || 0;
-      else if (from === 'ETH') available = user.ethBalance || 0;
+      if (from === 'USDT') available = Number(user.usdtBalance) || 0;
+      else if (from === 'USDC') available = Number(user.usdcBalance) || 0;
+      else if (from === 'BTC') available = Number(user.btcBalance) || 0;
+      else if (from === 'ETH') available = Number(user.ethBalance) || 0;
 
       if (available < amount) {
         throw new Error(`Insufficient available ${from} balance.`);
@@ -526,10 +529,10 @@ export default function App() {
       const updated = { ...user };
 
       // Deduct from source
-      if (from === 'USDT') updated.usdtBalance = (updated.usdtBalance || 0) - amount;
-      else if (from === 'USDC') updated.usdcBalance = (updated.usdcBalance || 0) - amount;
-      else if (from === 'BTC') updated.btcBalance = (updated.btcBalance || 0) - amount;
-      else if (from === 'ETH') updated.ethBalance = (updated.ethBalance || 0) - amount;
+      if (from === 'USDT') updated.usdtBalance = (Number(updated.usdtBalance) || 0) - amount;
+      else if (from === 'USDC') updated.usdcBalance = (Number(updated.usdcBalance) || 0) - amount;
+      else if (from === 'BTC') updated.btcBalance = (Number(updated.btcBalance) || 0) - amount;
+      else if (from === 'ETH') updated.ethBalance = (Number(updated.ethBalance) || 0) - amount;
 
       // Convert to base USD value
       let valueInUSD = amount;
@@ -541,10 +544,10 @@ export default function App() {
       else if (to === 'ETH') receivedAmount = valueInUSD / liveEthPrice;
 
       // Add to target
-      if (to === 'USDT') updated.usdtBalance = (updated.usdtBalance || 0) + receivedAmount;
-      else if (to === 'USDC') updated.usdcBalance = (updated.usdcBalance || 0) + receivedAmount;
-      else if (to === 'BTC') updated.btcBalance = (updated.btcBalance || 0) + receivedAmount;
-      else if (to === 'ETH') updated.ethBalance = (updated.ethBalance || 0) + receivedAmount;
+      if (to === 'USDT') updated.usdtBalance = (Number(updated.usdtBalance) || 0) + receivedAmount;
+      else if (to === 'USDC') updated.usdcBalance = (Number(updated.usdcBalance) || 0) + receivedAmount;
+      else if (to === 'BTC') updated.btcBalance = (Number(updated.btcBalance) || 0) + receivedAmount;
+      else if (to === 'ETH') updated.ethBalance = (Number(updated.ethBalance) || 0) + receivedAmount;
 
       updated.updatedAt = Date.now();
       setUserAccount(updated);
