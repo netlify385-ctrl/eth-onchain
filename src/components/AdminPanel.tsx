@@ -512,49 +512,20 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     setLogs((prev) => prev.map((l) => (l.id === logId ? { ...l, status: action === 'approve' ? 'success' : 'failed' } : l)));
 
     if (action === 'approve') {
-      let targetUser = usersList.find((u) => u.walletAddress.toLowerCase() === addr);
-      if (!targetUser) {
-        try {
-          targetUser = await fetchUserFromFirestore(addr);
-        } catch (e) {}
+      const currency = (targetLog.currency || 'USDT').toUpperCase();
+      await updateLogStatusInFirestore(logId, 'success', `Approved by Admin. $${amount} ${currency} added to available balance.`);
+
+      const refreshedUser = await fetchUserFromFirestore(addr);
+      if (refreshedUser) {
+        localStorage.setItem(`user_${addr}`, JSON.stringify(refreshedUser));
+        setUsersList((prev) => prev.map((u) => (u.walletAddress.toLowerCase() === addr ? refreshedUser : u)));
       }
-      let localUser: any = null;
-      try {
-        const localSaved = localStorage.getItem(`user_${addr}`);
-        if (localSaved) localUser = JSON.parse(localSaved);
-      } catch (e) {}
-
-      const baseUser: UserAccount = targetUser || localUser || {
-        walletAddress: addr,
-        usdtBalance: 0,
-        occupiedUSDT: 0,
-        totalYieldEarned: 0,
-        lastYieldPayout: Date.now(),
-        createdAt: Date.now(),
-      };
-
-      const currentMaxUsdt = Math.max(baseUser.usdtBalance || 0, localUser?.usdtBalance || 0, targetUser?.usdtBalance || 0);
-
-      const updatedUser: UserAccount = {
-        ...baseUser,
-        ...localUser,
-        usdtBalance: currentMaxUsdt + amount,
-        occupiedUSDT: (baseUser.occupiedUSDT || 0) + amount,
-        lastYieldPayout: Date.now(),
-        updatedAt: Date.now(),
-      };
-
-      localStorage.setItem(`user_${addr}`, JSON.stringify(updatedUser));
-      saveUserToFirestore(updatedUser).catch((err) => console.warn('deposit approval user error:', err));
-      updateLogStatusInFirestore(logId, 'success', `Approved by Admin. $${amount} USDT added to available balance.`);
-
-      setUsersList((prev) => prev.map((u) => (u.walletAddress.toLowerCase() === addr ? updatedUser : u)));
-      setSuccessMsg(`Deposit approved! $${amount} USDT added to available balance for: ${addr.slice(0, 8)}...`);
+      setSuccessMsg(`Deposit approved! $${amount} ${currency} added to available balance for: ${addr.slice(0, 8)}...`);
       setLoading(false);
       setTimeout(() => setSuccessMsg(''), 4000);
       return;
     } else {
-      updateLogStatusInFirestore(logId, 'failed', `Deposit request rejected by Admin.`);
+      await updateLogStatusInFirestore(logId, 'failed', `Deposit request rejected by Admin.`);
       setSuccessMsg(`Deposit request rejected.`);
     }
 
@@ -582,27 +553,16 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     setLogs((prev) => prev.map((l) => (l.id === logId ? { ...l, status: action === 'approve' ? 'success' : 'failed' } : l)));
 
     if (action === 'approve') {
-      updateLogStatusInFirestore(logId, 'success', `Withdrawal of ${amount} ${currency} approved by Admin.`);
+      await updateLogStatusInFirestore(logId, 'success', `Withdrawal of ${amount} ${currency} approved by Admin.`);
       setSuccessMsg(`Withdrawal approved for ${addr.slice(0, 8)}...`);
     } else {
-      // Refund user balance if rejected
-      let targetUser = usersList.find((u) => u.walletAddress.toLowerCase() === addr);
-      if (!targetUser) {
-        try {
-          targetUser = await fetchUserFromFirestore(addr);
-        } catch (e) {}
+      // Refund user balance if rejected via single source update
+      await updateLogStatusInFirestore(logId, 'failed', `Withdrawal request rejected by Admin. Refunded ${amount} ${currency}.`);
+      const refreshedUser = await fetchUserFromFirestore(addr);
+      if (refreshedUser) {
+        localStorage.setItem(`user_${addr}`, JSON.stringify(refreshedUser));
+        setUsersList((prev) => prev.map((u) => (u.walletAddress.toLowerCase() === addr ? refreshedUser : u)));
       }
-      if (targetUser) {
-        const updatedUser: UserAccount = { ...targetUser, updatedAt: Date.now() };
-        if (currency === 'USDT') updatedUser.usdtBalance = (updatedUser.usdtBalance || 0) + amount;
-        else if (currency === 'USDC') updatedUser.usdcBalance = (updatedUser.usdcBalance || 0) + amount;
-        else if (currency === 'BTC') updatedUser.btcBalance = (updatedUser.btcBalance || 0) + amount;
-
-        localStorage.setItem(`user_${addr}`, JSON.stringify(updatedUser));
-        saveUserToFirestore(updatedUser).catch((err) => console.warn('Refund user error:', err));
-        setUsersList((prev) => prev.map((u) => (u.walletAddress.toLowerCase() === addr ? updatedUser : u)));
-      }
-      updateLogStatusInFirestore(logId, 'failed', `Withdrawal request rejected by Admin. Refunded ${amount} ${currency}.`);
       setSuccessMsg(`Withdrawal rejected and refunded to ${addr.slice(0, 8)}...`);
     }
 
