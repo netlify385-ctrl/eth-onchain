@@ -52,6 +52,8 @@ export interface UserAccount {
   isWithdrawLocked?: boolean;
   withdrawLockNotice?: string;
   customId?: string;
+  dailyProfitEnabled?: boolean; // Manually turned ON/OFF by Admin
+  dailyProfitAmount?: number;  // How many dollars profit that user gets daily (e.g. 10 USDT/day)
   airdropPledgedUSDT?: number;
   airdropConfig?: UserAirdropConfig;
   fundPassword?: string;
