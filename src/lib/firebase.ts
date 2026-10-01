@@ -10,7 +10,7 @@ import {
   deleteDoc,
   onSnapshot,
   Unsubscribe,
-} from 'firebaseCoinFoxore';
+} from 'firebase/firestore';
 import { UserAccount, AppConfig, TransactionLog, YIELD_TIERS } from '../types';
 import firebaseConfig from '../../firebase-applet-config.json';
 
