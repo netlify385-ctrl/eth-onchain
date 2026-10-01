@@ -425,7 +425,8 @@ export default function App() {
     }
 
     const cleanAddr = connectedAddress.toLowerCase();
-    const curUpper = (currency || 'USDT').toUpperCase();
+    const rawCur = (currency || 'USDT').toUpperCase();
+    const curUpper = rawCur.includes('USDT') ? 'USDT' : rawCur;
 
     // Ensure user profile exists in Firestore without auto-crediting unapproved balance
     if (!userAccount) {
