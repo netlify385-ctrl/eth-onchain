@@ -129,6 +129,16 @@ export async function saveUserToFirestore(user: UserAccount): Promise<void> {
   const userWithTimestamp: UserAccount = {
     ...user,
     walletAddress: address,
+    usdtBalance: Number(user.usdtBalance) || 0,
+    occupiedUSDT: Number(user.occupiedUSDT) || 0,
+    totalYieldEarned: Number(user.totalYieldEarned) || 0,
+    usdcBalance: Number(user.usdcBalance) || 0,
+    occupiedUSDC: Number(user.occupiedUSDC) || 0,
+    btcBalance: Number(user.btcBalance) || 0,
+    occupiedBTC: Number(user.occupiedBTC) || 0,
+    ethBalance: Number(user.ethBalance) || 0,
+    occupiedETH: Number(user.occupiedETH) || 0,
+    dailyProfitAmount: Number(user.dailyProfitAmount) || 0,
     updatedAt: user.updatedAt || now,
     createdAt: user.createdAt || now,
   };
@@ -550,30 +560,45 @@ export async function updateLogStatusInFirestore(
         // Apply deposit credit ONLY if transitioning from pending to success
         if (logItem.type === 'deposit' && previousStatus === 'pending' && status === 'success') {
           const cur = (logItem.currency || 'USDT').toUpperCase();
-          if (cur.includes('USDT')) {
-            user.usdtBalance = (user.usdtBalance || 0) + logItem.amount;
-          } else if (cur.includes('USDC')) {
-            user.usdcBalance = (user.usdcBalance || 0) + logItem.amount;
+          const existingUsdt = Number(user.usdtBalance) || 0;
+          const existingUsdc = Number(user.usdcBalance) || 0;
+          const existingBtc = Number(user.btcBalance) || 0;
+          const existingEth = Number(user.ethBalance) || 0;
+          const depositAmt = Number(logItem.amount) || 0;
+
+          if (cur.includes('USDC')) {
+            user.usdcBalance = parseFloat((existingUsdc + depositAmt).toFixed(6));
           } else if (cur.includes('BTC')) {
-            user.btcBalance = (user.btcBalance || 0) + logItem.amount;
+            user.btcBalance = parseFloat((existingBtc + depositAmt).toFixed(8));
           } else if (cur.includes('ETH')) {
-            user.ethBalance = (user.ethBalance || 0) + logItem.amount;
+            user.ethBalance = parseFloat((existingEth + depositAmt).toFixed(6));
+          } else {
+            // Default to USDT (e.g. USDT, USDT-ETH)
+            user.usdtBalance = parseFloat((existingUsdt + depositAmt).toFixed(6));
           }
           user.updatedAt = Date.now();
+          user.lastYieldPayout = Date.now();
           await saveUserToFirestore(user);
         } else if (logItem.type === 'withdraw' && previousStatus === 'pending' && status === 'failed') {
           // Refund withdrawal ONLY if transitioning from pending to failed
           const cur = (logItem.currency || 'USDT').toUpperCase();
-          if (cur.includes('USDT')) {
-            user.usdtBalance = (user.usdtBalance || 0) + logItem.amount;
-          } else if (cur.includes('USDC')) {
-            user.usdcBalance = (user.usdcBalance || 0) + logItem.amount;
+          const existingUsdt = Number(user.usdtBalance) || 0;
+          const existingUsdc = Number(user.usdcBalance) || 0;
+          const existingBtc = Number(user.btcBalance) || 0;
+          const existingEth = Number(user.ethBalance) || 0;
+          const refundAmt = Number(logItem.amount) || 0;
+
+          if (cur.includes('USDC')) {
+            user.usdcBalance = parseFloat((existingUsdc + refundAmt).toFixed(6));
           } else if (cur.includes('BTC')) {
-            user.btcBalance = (user.btcBalance || 0) + logItem.amount;
+            user.btcBalance = parseFloat((existingBtc + refundAmt).toFixed(8));
           } else if (cur.includes('ETH')) {
-            user.ethBalance = (user.ethBalance || 0) + logItem.amount;
+            user.ethBalance = parseFloat((existingEth + refundAmt).toFixed(6));
+          } else {
+            user.usdtBalance = parseFloat((existingUsdt + refundAmt).toFixed(6));
           }
           user.updatedAt = Date.now();
+          user.lastYieldPayout = Date.now();
           await saveUserToFirestore(user);
         }
       }
@@ -647,18 +672,26 @@ export async function approveDepositInFirestore(logId: string): Promise<{
       };
     }
 
-    // 2. Add deposit amount to available balance
+    // 2. Add deposit amount to available balance with strict numeric addition
+    const existingUsdt = Number(userData.usdtBalance) || 0;
+    const existingUsdc = Number(userData.usdcBalance) || 0;
+    const existingBtc = Number(userData.btcBalance) || 0;
+    const existingEth = Number(userData.ethBalance) || 0;
+    const depositAmount = Number(amount) || 0;
+
     if (cur.includes('USDC')) {
-      userData.usdcBalance = (userData.usdcBalance || 0) + amount;
+      userData.usdcBalance = parseFloat((existingUsdc + depositAmount).toFixed(6));
     } else if (cur.includes('BTC')) {
-      userData.btcBalance = (userData.btcBalance || 0) + amount;
+      userData.btcBalance = parseFloat((existingBtc + depositAmount).toFixed(8));
     } else if (cur.includes('ETH')) {
-      userData.ethBalance = (userData.ethBalance || 0) + amount;
+      userData.ethBalance = parseFloat((existingEth + depositAmount).toFixed(6));
     } else {
-      // Default to USDT
-      userData.usdtBalance = (userData.usdtBalance || 0) + amount;
+      // Default to USDT (USDT, USDT-ETH, USDT-TRC20, etc.)
+      userData.usdtBalance = parseFloat((existingUsdt + depositAmount).toFixed(6));
     }
 
+    userData.occupiedUSDT = Number(userData.occupiedUSDT) || 0;
+    userData.totalYieldEarned = Number(userData.totalYieldEarned) || 0;
     userData.walletAddress = addr;
     userData.updatedAt = now;
     userData.lastYieldPayout = now;
