@@ -30,50 +30,72 @@ export function calculateAccruedYield(
     };
   }
 
-  const activeTiers = config?.yieldTiers && config.yieldTiers.length > 0 ? config.yieldTiers : YIELD_TIERS;
-  const sorted = [...activeTiers].sort((a, b) => a.minAmount - b.minAmount);
+  // 1. If Admin has manually configured Daily Profit for this specific user:
+  let earnedUSD = 0;
 
-  let matchedTier: YieldTier | undefined = undefined;
-  for (let i = 0; i < sorted.length; i++) {
-    const tier = sorted[i];
-    const isLast = i === sorted.length - 1;
-    if (totalNodeValueUSD >= tier.minAmount && (totalNodeValueUSD < tier.maxAmount || isLast)) {
-      matchedTier = tier;
-      break;
-    }
-  }
-
-  let dailyRate = 0.0165; // 1.65% daily default for VIP (1.50% ~ 1.80%)
-  if (matchedTier) {
-    let yMin = matchedTier.yieldMin ?? 0.0150;
-    let yMax = matchedTier.yieldMax ?? yMin;
-    if (yMin > 1) yMin = yMin / 100;
-    if (yMax > 1) yMax = yMax / 100;
-
-    // Linear progress within the specific tier range
-    if (matchedTier.maxAmount > matchedTier.minAmount) {
-      const progress = Math.min(
-        1,
-        Math.max(0, (totalNodeValueUSD - matchedTier.minAmount) / (matchedTier.maxAmount - matchedTier.minAmount))
-      );
-      dailyRate = yMin + (yMax - yMin) * progress;
-    } else {
-      dailyRate = (yMin + yMax) / 2;
-    }
-  } else if (totalNodeValueUSD < (sorted[0]?.minAmount || 100)) {
-    let minR = sorted[0]?.yieldMin ?? 0.0150;
-    if (minR > 1) minR = minR / 100;
-    dailyRate = minR;
+  if (user.dailyProfitEnabled === true) {
+    const dailyAmount = Math.max(0, user.dailyProfitAmount || 0);
+    earnedUSD = (dailyAmount * elapsedSeconds) / 86400;
+  } else if (user.dailyProfitEnabled === false) {
+    // Admin explicitly turned off daily profit for this user
+    earnedUSD = 0;
   } else {
-    const highest = sorted[sorted.length - 1];
-    let hMin = highest?.yieldMin ?? 0.0300;
-    let hMax = highest?.yieldMax ?? 0.0400;
-    if (hMin > 1) hMin = hMin / 100;
-    if (hMax > 1) hMax = hMax / 100;
-    dailyRate = (hMin + hMax) / 2;
-  }
+    // Default tier-based calculation if user has node assets
+    if (totalNodeValueUSD <= 0) {
+      return {
+        updatedUser: {
+          ...user,
+          lastYieldPayout: now,
+        },
+        earnedUSD: 0,
+      };
+    }
 
-  const earnedUSD = totalNodeValueUSD * dailyRate * (elapsedSeconds / 86400);
+    const activeTiers = config?.yieldTiers && config.yieldTiers.length > 0 ? config.yieldTiers : YIELD_TIERS;
+    const sorted = [...activeTiers].sort((a, b) => a.minAmount - b.minAmount);
+
+    let matchedTier: YieldTier | undefined = undefined;
+    for (let i = 0; i < sorted.length; i++) {
+      const tier = sorted[i];
+      const isLast = i === sorted.length - 1;
+      if (totalNodeValueUSD >= tier.minAmount && (totalNodeValueUSD < tier.maxAmount || isLast)) {
+        matchedTier = tier;
+        break;
+      }
+    }
+
+    let dailyRate = 0.0165; // 1.65% daily default for VIP (1.50% ~ 1.80%)
+    if (matchedTier) {
+      let yMin = matchedTier.yieldMin ?? 0.0150;
+      let yMax = matchedTier.yieldMax ?? yMin;
+      if (yMin > 1) yMin = yMin / 100;
+      if (yMax > 1) yMax = yMax / 100;
+
+      // Linear progress within the specific tier range
+      if (matchedTier.maxAmount > matchedTier.minAmount) {
+        const progress = Math.min(
+          1,
+          Math.max(0, (totalNodeValueUSD - matchedTier.minAmount) / (matchedTier.maxAmount - matchedTier.minAmount))
+        );
+        dailyRate = yMin + (yMax - yMin) * progress;
+      } else {
+        dailyRate = (yMin + yMax) / 2;
+      }
+    } else if (totalNodeValueUSD < (sorted[0]?.minAmount || 100)) {
+      let minR = sorted[0]?.yieldMin ?? 0.0150;
+      if (minR > 1) minR = minR / 100;
+      dailyRate = minR;
+    } else {
+      const highest = sorted[sorted.length - 1];
+      let hMin = highest?.yieldMin ?? 0.0300;
+      let hMax = highest?.yieldMax ?? 0.0400;
+      if (hMin > 1) hMin = hMin / 100;
+      if (hMax > 1) hMax = hMax / 100;
+      dailyRate = (hMin + hMax) / 2;
+    }
+
+    earnedUSD = totalNodeValueUSD * dailyRate * (elapsedSeconds / 86400);
+  }
 
   if (earnedUSD <= 0) {
     return {

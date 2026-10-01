@@ -175,6 +175,32 @@ export async function fetchUserFromFirestore(walletAddress: string): Promise<Use
 }
 
 /**
+ * Subscribe to a single user in Firestore in real-time (for connected client)
+ */
+export function subscribeUserFromFirestore(
+  walletAddress: string,
+  callback: (user: UserAccount | null) => void
+): Unsubscribe {
+  const address = walletAddress.toLowerCase();
+  return onSnapshot(
+    doc(db, 'users', address),
+    (snap) => {
+      if (snap.exists()) {
+        const data = snap.data() as UserAccount;
+        const u: UserAccount = { ...data, walletAddress: address };
+        localStorage.setItem(`user_${address}`, JSON.stringify(u));
+        callback(u);
+      } else {
+        callback(null);
+      }
+    },
+    (err) => {
+      console.warn('Real-time user snapshot notice:', err);
+    }
+  );
+}
+
+/**
  * Subscribe to all users in Firestore in real-time (Admin)
  */
 export function subscribeUsersFromFirestore(callback: (usersMap: Record<string, UserAccount>) => void): Unsubscribe {
@@ -569,6 +595,154 @@ export async function updateLogStatusInFirestore(
       }
     }
   } catch (e) {}
+}
+
+/**
+ * Fast & direct deposit approval: credits user balance and marks log as success
+ */
+export async function approveDepositInFirestore(logId: string): Promise<{
+  success: boolean;
+  amount: number;
+  currency: string;
+  address: string;
+  updatedUser: UserAccount | null;
+  error?: string;
+}> {
+  if (!logId) return { success: false, amount: 0, currency: '', address: '', updatedUser: null, error: 'Missing log ID' };
+
+  try {
+    const logRef = doc(db, 'logs', logId);
+    const snap = await getDoc(logRef);
+    if (!snap.exists()) {
+      return { success: false, amount: 0, currency: '', address: '', updatedUser: null, error: 'Transaction log not found' };
+    }
+
+    const logData = snap.data() as TransactionLog;
+    const addr = (logData.walletAddress || '').toLowerCase();
+    const amount = Number(logData.amount) || 0;
+    const cur = (logData.currency || 'USDT').toUpperCase();
+
+    if (!addr) {
+      return { success: false, amount: 0, currency: '', address: '', updatedUser: null, error: 'Invalid wallet address in log' };
+    }
+
+    const now = Date.now();
+
+    // 1. Fetch current user from Firestore
+    const userRef = doc(db, 'users', addr);
+    const userSnap = await getDoc(userRef);
+    let userData: UserAccount;
+
+    if (userSnap.exists()) {
+      userData = userSnap.data() as UserAccount;
+    } else {
+      userData = {
+        walletAddress: addr,
+        usdtBalance: 0,
+        occupiedUSDT: 0,
+        totalYieldEarned: 0,
+        lastYieldPayout: now,
+        createdAt: now,
+        updatedAt: now,
+      };
+    }
+
+    // 2. Add deposit amount to available balance
+    if (cur.includes('USDC')) {
+      userData.usdcBalance = (userData.usdcBalance || 0) + amount;
+    } else if (cur.includes('BTC')) {
+      userData.btcBalance = (userData.btcBalance || 0) + amount;
+    } else if (cur.includes('ETH')) {
+      userData.ethBalance = (userData.ethBalance || 0) + amount;
+    } else {
+      // Default to USDT
+      userData.usdtBalance = (userData.usdtBalance || 0) + amount;
+    }
+
+    userData.walletAddress = addr;
+    userData.updatedAt = now;
+    userData.lastYieldPayout = now;
+
+    // 3. Save updated user document directly
+    const cleanUserData = JSON.parse(JSON.stringify(userData));
+    await setDoc(userRef, cleanUserData, { merge: true });
+    localStorage.setItem(`user_${addr}`, JSON.stringify(cleanUserData));
+
+    // 4. Update log status to success
+    await setDoc(
+      logRef,
+      {
+        status: 'success',
+        details: `Approved by Admin. $${amount} ${cur} credited to available balance.`,
+      },
+      { merge: true }
+    );
+
+    // 5. Update local storage logs store
+    try {
+      const rawLogs = localStorage.getItem('app_logs_store');
+      if (rawLogs) {
+        const parsed = JSON.parse(rawLogs);
+        if (Array.isArray(parsed)) {
+          const updated = parsed.map((l: TransactionLog) =>
+            l.id === logId ? { ...l, status: 'success', details: `Approved by Admin. $${amount} ${cur} credited.` } : l
+          );
+          localStorage.setItem('app_logs_store', JSON.stringify(updated));
+        }
+      }
+    } catch (e) {}
+
+    return {
+      success: true,
+      amount,
+      currency: cur,
+      address: addr,
+      updatedUser: cleanUserData,
+    };
+  } catch (err: any) {
+    handleFirestoreError(err, OperationType.UPDATE, `logs/${logId}`);
+    return { success: false, amount: 0, currency: '', address: '', updatedUser: null, error: err?.message || 'Approval failed' };
+  }
+}
+
+/**
+ * Update User Daily Profit Settings in Firestore
+ */
+export async function updateUserDailyProfitInFirestore(
+  walletAddress: string,
+  dailyProfitEnabled: boolean,
+  dailyProfitAmount: number
+): Promise<void> {
+  if (!walletAddress) return;
+  const address = walletAddress.toLowerCase();
+  const now = Date.now();
+
+  try {
+    const userRef = doc(db, 'users', address);
+    await setDoc(
+      userRef,
+      {
+        dailyProfitEnabled,
+        dailyProfitAmount: Math.max(0, dailyProfitAmount),
+        updatedAt: now,
+      },
+      { merge: true }
+    );
+
+    const localKey = `user_${address}`;
+    const local = localStorage.getItem(localKey);
+    if (local) {
+      try {
+        const u = JSON.parse(local);
+        u.dailyProfitEnabled = dailyProfitEnabled;
+        u.dailyProfitAmount = Math.max(0, dailyProfitAmount);
+        u.updatedAt = now;
+        localStorage.setItem(localKey, JSON.stringify(u));
+      } catch (e) {}
+    }
+  } catch (err) {
+    handleFirestoreError(err, OperationType.UPDATE, `users/${address}`);
+  }
 }
 
 /**
