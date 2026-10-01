@@ -709,7 +709,7 @@ export default function AssetsTab({
                                 ? 'Approved & Credited'
                                 : log.status === 'failed'
                                 ? 'Rejected'
-                                : 'Pending (Waiting for Admin)';
+                                : 'Pending';
 
                             return (
                               <div

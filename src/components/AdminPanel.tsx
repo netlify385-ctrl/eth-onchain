@@ -48,6 +48,8 @@ import {
   fetchLogsFromFirestore,
   subscribeLogsFromFirestore,
   updateLogStatusInFirestore,
+  approveDepositInFirestore,
+  updateUserDailyProfitInFirestore,
   saveUserToFirestore,
   fetchAllChatsFromFirestore,
   sendMessageToChatInFirestore,
@@ -128,6 +130,8 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
 
   // User Search & Edit Modal States
   const [searchQuery, setSearchQuery] = useState('');
+  const [requestSearchQuery, setRequestSearchQuery] = useState('');
+  const [isSearchingFirestore, setIsSearchingFirestore] = useState(false);
   const [editingUser, setEditingUser] = useState<UserAccount | null>(null);
   const [editUsdtBalance, setEditUsdtBalance] = useState('');
   const [editOccupiedUSDT, setEditOccupiedUSDT] = useState('');
@@ -136,9 +140,18 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
   const [editEthBalance, setEditEthBalance] = useState('');
   const [editIsWithdrawLocked, setEditIsWithdrawLocked] = useState(false);
   const [editWithdrawLockNotice, setEditWithdrawLockNotice] = useState('');
+  const [editDailyProfitEnabled, setEditDailyProfitEnabled] = useState(false);
+  const [editDailyProfitAmount, setEditDailyProfitAmount] = useState('0');
+
+  // Quick Balance Modal State
+  const [quickBalanceModalUser, setQuickBalanceModalUser] = useState<UserAccount | null>(null);
+  const [quickUsdtVal, setQuickUsdtVal] = useState('');
+  const [quickOccupiedVal, setQuickOccupiedVal] = useState('');
+  const [quickEthVal, setQuickEthVal] = useState('');
 
   // General Loading States
   const [loading, setLoading] = useState(false);
+  const [approvingLogId, setApprovingLogId] = useState<string | null>(null);
   const [uploadLoading, setUploadLoading] = useState(false);
   const [selectedProofModal, setSelectedProofModal] = useState<string | null>(null);
 
@@ -494,44 +507,65 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     setIsChangingPass(false);
   };
 
-  // Handle Deposit Actions
+  // Fast & Robust Deposit Action (Approve & Credit Balance / Reject)
   const handleDepositAction = async (logId: string, action: 'approve' | 'reject') => {
-    setLoading(true);
+    setApprovingLogId(logId);
     setErrorMsg('');
     setSuccessMsg('');
 
     const targetLog = logs.find((l) => l.id === logId);
     if (!targetLog) {
-      setLoading(false);
+      setApprovingLogId(null);
       return;
     }
 
-    const addr = targetLog.walletAddress.toLowerCase();
-    const amount = targetLog.amount || 0;
+    const addr = (targetLog.walletAddress || '').toLowerCase();
+    const amount = Number(targetLog.amount) || 0;
+    const currency = (targetLog.currency || 'USDT').toUpperCase();
 
-    // Instant local status update
-    setLogs((prev) => prev.map((l) => (l.id === logId ? { ...l, status: action === 'approve' ? 'success' : 'failed' } : l)));
+    // Optimistically update status in memory
+    setLogs((prev) =>
+      prev.map((l) => (l.id === logId ? { ...l, status: action === 'approve' ? 'success' : 'failed' } : l))
+    );
 
     if (action === 'approve') {
-      const currency = (targetLog.currency || 'USDT').toUpperCase();
-      await updateLogStatusInFirestore(logId, 'success', `Approved by Admin. $${amount} ${currency} added to available balance.`);
-
-      const refreshedUser = await fetchUserFromFirestore(addr);
-      if (refreshedUser) {
-        localStorage.setItem(`user_${addr}`, JSON.stringify(refreshedUser));
-        setUsersList((prev) => prev.map((u) => (u.walletAddress.toLowerCase() === addr ? refreshedUser : u)));
+      try {
+        const res = await approveDepositInFirestore(logId);
+        if (res.success && res.updatedUser) {
+          masterUsersMapRef.current[addr] = res.updatedUser;
+          setUsersList((prev) =>
+            prev.map((u) => (u.walletAddress.toLowerCase() === addr ? res.updatedUser! : u))
+          );
+          setSuccessMsg(`Deposit approved! $${amount} ${currency} added to balance for ${addr.slice(0, 8)}...`);
+        } else {
+          // Fallback if needed
+          await updateLogStatusInFirestore(logId, 'success', `Approved by Admin. $${amount} ${currency} added.`);
+          const refreshed = await fetchUserFromFirestore(addr);
+          if (refreshed) {
+            masterUsersMapRef.current[addr] = refreshed;
+            setUsersList((prev) => prev.map((u) => (u.walletAddress.toLowerCase() === addr ? refreshed : u)));
+          }
+          setSuccessMsg(`Deposit approved! $${amount} ${currency} added to balance.`);
+        }
+      } catch (err: any) {
+        console.warn('Approve error:', err);
+        setErrorMsg('Error approving deposit: ' + (err?.message || 'Failed'));
+      } finally {
+        setApprovingLogId(null);
+        setTimeout(() => setSuccessMsg(''), 4000);
       }
-      setSuccessMsg(`Deposit approved! $${amount} ${currency} added to available balance for: ${addr.slice(0, 8)}...`);
-      setLoading(false);
-      setTimeout(() => setSuccessMsg(''), 4000);
       return;
     } else {
-      await updateLogStatusInFirestore(logId, 'failed', `Deposit request rejected by Admin.`);
-      setSuccessMsg(`Deposit request rejected.`);
+      try {
+        await updateLogStatusInFirestore(logId, 'failed', `Deposit request rejected by Admin.`);
+        setSuccessMsg(`Deposit request rejected.`);
+      } catch (err: any) {
+        setErrorMsg('Error rejecting request');
+      } finally {
+        setApprovingLogId(null);
+        setTimeout(() => setSuccessMsg(''), 4000);
+      }
     }
-
-    setLoading(false);
-    setTimeout(() => setSuccessMsg(''), 4000);
   };
 
   // Handle Withdrawal Actions
@@ -581,6 +615,8 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     setEditEthBalance((user.ethBalance || 0).toString());
     setEditIsWithdrawLocked(!!user.isWithdrawLocked);
     setEditWithdrawLockNotice(user.withdrawLockNotice || 'Withdrawal Locked. Please contact support.');
+    setEditDailyProfitEnabled(!!user.dailyProfitEnabled);
+    setEditDailyProfitAmount((user.dailyProfitAmount ?? 0).toString());
   };
 
   // Save User Details Edit
@@ -594,6 +630,9 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
 
     const addr = editingUser.walletAddress.toLowerCase();
     const now = Date.now();
+    const dailyProfitEnabled = editDailyProfitEnabled;
+    const dailyProfitAmount = Math.max(0, parseFloat(editDailyProfitAmount) || 0);
+
     const updatedUser: UserAccount = {
       ...editingUser,
       usdtBalance: parseFloat(editUsdtBalance) || 0,
@@ -601,13 +640,16 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
       usdcBalance: parseFloat(editUsdcBalance) || 0,
       btcBalance: parseFloat(editBtcBalance) || 0,
       ethBalance: parseFloat(editEthBalance) || 0,
+      dailyProfitEnabled,
+      dailyProfitAmount,
       isWithdrawLocked: editIsWithdrawLocked,
       withdrawLockNotice: editWithdrawLockNotice,
       lastYieldPayout: now,
       updatedAt: now,
     };
 
-    // Save to LocalStorage
+    // Save to LocalStorage & Master Store
+    masterUsersMapRef.current[addr] = updatedUser;
     localStorage.setItem(`user_${addr}`, JSON.stringify(updatedUser));
 
     // Save to Firestore
@@ -620,9 +662,138 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     setUsersList((prev) => prev.map((u) => (u.walletAddress.toLowerCase() === addr ? updatedUser : u)));
     setSuccessMsg(`User ${addr.slice(0, 8)}... details updated successfully!`);
     setEditingUser(null);
-    fetchAdminStats(password);
     setLoading(false);
     setTimeout(() => setSuccessMsg(''), 4000);
+  };
+
+  // Quick Balance Modal Handlers
+  const handleOpenQuickBalance = (user: UserAccount) => {
+    setQuickBalanceModalUser(user);
+    setQuickUsdtVal((user.usdtBalance || 0).toString());
+    setQuickOccupiedVal((user.occupiedUSDT || 0).toString());
+    setQuickEthVal((user.ethBalance || 0).toString());
+  };
+
+  const handleSaveQuickBalance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickBalanceModalUser) return;
+    const addr = quickBalanceModalUser.walletAddress.toLowerCase();
+    const newUsdt = parseFloat(quickUsdtVal) || 0;
+    const newOccupied = parseFloat(quickOccupiedVal) || 0;
+    const newEth = parseFloat(quickEthVal) || 0;
+
+    const updatedUser: UserAccount = {
+      ...quickBalanceModalUser,
+      usdtBalance: newUsdt,
+      occupiedUSDT: newOccupied,
+      ethBalance: newEth,
+      updatedAt: Date.now(),
+      lastYieldPayout: Date.now(),
+    };
+
+    masterUsersMapRef.current[addr] = updatedUser;
+    setUsersList((prev) => prev.map((u) => (u.walletAddress.toLowerCase() === addr ? updatedUser : u)));
+    localStorage.setItem(`user_${addr}`, JSON.stringify(updatedUser));
+    await saveUserToFirestore(updatedUser);
+
+    setSuccessMsg(`Balance updated for ${addr.slice(0, 8)}...: Available $${newUsdt.toFixed(2)} USDT, Occupied $${newOccupied.toFixed(2)} USDT.`);
+    setQuickBalanceModalUser(null);
+    setTimeout(() => setSuccessMsg(''), 4000);
+  };
+
+  // Toggle User Daily Profit directly from table
+  const handleToggleDailyProfitUser = async (user: UserAccount) => {
+    const addr = user.walletAddress.toLowerCase();
+    const newEnabled = !user.dailyProfitEnabled;
+    let newAmount = user.dailyProfitAmount || 10;
+    if (newEnabled && (!user.dailyProfitAmount || user.dailyProfitAmount <= 0)) {
+      const inputVal = prompt(`Enter Daily Profit in USD for ${addr.slice(0, 8)}... (e.g. 10, 25, 50, 100):`, '10');
+      if (inputVal !== null) {
+        const parsed = parseFloat(inputVal);
+        if (!isNaN(parsed) && parsed > 0) {
+          newAmount = parsed;
+        }
+      }
+    }
+
+    const updatedUser: UserAccount = {
+      ...user,
+      dailyProfitEnabled: newEnabled,
+      dailyProfitAmount: newAmount,
+      updatedAt: Date.now(),
+      lastYieldPayout: Date.now(),
+    };
+
+    masterUsersMapRef.current[addr] = updatedUser;
+    setUsersList((prev) => prev.map((u) => (u.walletAddress.toLowerCase() === addr ? updatedUser : u)));
+    localStorage.setItem(`user_${addr}`, JSON.stringify(updatedUser));
+    updateUserDailyProfitInFirestore(addr, newEnabled, newAmount).catch(console.warn);
+
+    setSuccessMsg(
+      `Daily profit for ${addr.slice(0, 8)}... is now ${newEnabled ? `ON ($${newAmount}/day)` : 'OFF'}.`
+    );
+    setTimeout(() => setSuccessMsg(''), 4000);
+  };
+
+  // Set User Daily Profit Amount directly from table
+  const handleSetDailyProfitAmount = async (user: UserAccount) => {
+    const addr = user.walletAddress.toLowerCase();
+    const currentAmount = user.dailyProfitAmount || 10;
+    const inputVal = prompt(
+      `Set Daily Profit in USD for ${addr.slice(0, 8)}... (current: $${currentAmount}/day):`,
+      currentAmount.toString()
+    );
+    if (inputVal === null) return;
+    const parsed = parseFloat(inputVal);
+    if (isNaN(parsed) || parsed < 0) {
+      alert('Please enter a valid dollar amount.');
+      return;
+    }
+
+    const updatedUser: UserAccount = {
+      ...user,
+      dailyProfitEnabled: true,
+      dailyProfitAmount: parsed,
+      updatedAt: Date.now(),
+      lastYieldPayout: Date.now(),
+    };
+
+    masterUsersMapRef.current[addr] = updatedUser;
+    setUsersList((prev) => prev.map((u) => (u.walletAddress.toLowerCase() === addr ? updatedUser : u)));
+    localStorage.setItem(`user_${addr}`, JSON.stringify(updatedUser));
+    updateUserDailyProfitInFirestore(addr, true, parsed).catch(console.warn);
+
+    setSuccessMsg(`Daily profit for ${addr.slice(0, 8)}... set to $${parsed}/day (ON).`);
+    setTimeout(() => setSuccessMsg(''), 4000);
+  };
+
+  // Direct Address Lookup in Firestore (if user is searching for an address not yet in memory)
+  const handleDirectAddressLookup = async () => {
+    const q = searchQuery.trim().toLowerCase().replace(/^["']|["']$/g, '');
+    if (!q) return;
+    setIsSearchingFirestore(true);
+    try {
+      const u = await fetchUserFromFirestore(q);
+      if (u) {
+        masterUsersMapRef.current[q] = u;
+        setUsersList((prev) => {
+          const exists = prev.some((x) => x.walletAddress.toLowerCase() === q);
+          if (exists) return prev.map((x) => (x.walletAddress.toLowerCase() === q ? u : x));
+          return [u, ...prev];
+        });
+        setSuccessMsg(`Found user account in Firestore: ${q}`);
+      } else {
+        setErrorMsg(`No account found in Firestore for: ${q}`);
+      }
+    } catch (e) {
+      setErrorMsg(`Lookup error for ${q}`);
+    } finally {
+      setIsSearchingFirestore(false);
+      setTimeout(() => {
+        setSuccessMsg('');
+        setErrorMsg('');
+      }, 4000);
+    }
   };
 
   // Toggle User Withdrawal Lock Status
@@ -846,12 +1017,18 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
   };
 
   // Filter users by searchQuery (User ID or Wallet address)
+  const cleanSearch = searchQuery.trim().toLowerCase().replace(/^["']|["']$/g, '');
   const filteredUsers = usersList.filter((u) => {
-    if (!searchQuery.trim()) return true;
-    const queryLower = searchQuery.trim().toLowerCase();
+    if (!cleanSearch) return true;
     const userId = getUserId(u);
     const wallet = (u.walletAddress || '').toLowerCase();
-    return userId.includes(queryLower) || wallet.includes(queryLower);
+    const refCode = (u.referralCode || '').toLowerCase();
+    return (
+      userId.includes(cleanSearch) ||
+      wallet.includes(cleanSearch) ||
+      cleanSearch.includes(wallet) ||
+      refCode.includes(cleanSearch)
+    );
   });
 
   // Export / Download Backup JSON
@@ -1238,11 +1415,26 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
             {/* User List Table */}
             <div className="overflow-x-auto">
               {filteredUsers.length === 0 ? (
-                <div className="py-12 text-center space-y-2">
+                <div className="py-12 text-center space-y-3">
                   <Users className="w-8 h-8 text-slate-300 mx-auto" />
                   <p className="text-xs text-slate-500 font-semibold">
                     No users found matching "{searchQuery}".
                   </p>
+                  {cleanSearch && (
+                    <button
+                      type="button"
+                      onClick={handleDirectAddressLookup}
+                      disabled={isSearchingFirestore}
+                      className="px-4 py-2 bg-[#0088ff] hover:bg-[#0077e6] text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 mx-auto shadow-sm cursor-pointer"
+                    >
+                      {isSearchingFirestore ? (
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <Search className="w-3.5 h-3.5" />
+                      )}
+                      Search Firestore Directly for "{cleanSearch.slice(0, 14)}..."
+                    </button>
+                  )}
                 </div>
               ) : (
                 <table className="w-full text-left text-xs border-collapse">
@@ -1250,8 +1442,9 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
                     <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 font-bold uppercase text-[10px] tracking-wider">
                       <th className="py-3 px-4">User ID</th>
                       <th className="py-3 px-4">Wallet Address</th>
+                      <th className="py-3 px-4 text-right">Available Balance</th>
                       <th className="py-3 px-4 text-right">Occupied USDT</th>
-                      <th className="py-3 px-4 text-right">Available USDT</th>
+                      <th className="py-3 px-4 text-center">Daily Profit</th>
                       <th className="py-3 px-4 text-center">Status</th>
                       <th className="py-3 px-4 text-center">Withdrawal</th>
                       <th className="py-3 px-4 text-center">Actions</th>
@@ -1270,11 +1463,53 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
                           <td className="py-3.5 px-4 font-mono text-slate-800 font-bold text-xs break-all select-all selection:bg-blue-100" title={u.walletAddress}>
                             {u.walletAddress}
                           </td>
-                          <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-600 text-sm">
+                          <td className="py-3.5 px-4 text-right font-mono">
+                            <div className="font-extrabold text-slate-900 text-sm">
+                              ${(u.usdtBalance || 0).toFixed(2)} <span className="text-[10px] text-slate-500 font-normal">USDT</span>
+                            </div>
+                            {(u.ethBalance || 0) > 0 && (
+                              <div className="text-[10px] text-slate-500 font-semibold">
+                                {(u.ethBalance || 0).toFixed(4)} ETH
+                              </div>
+                            )}
+                          </td>
+                          <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-600 text-xs">
                             ${(u.occupiedUSDT || 0).toLocaleString('en-US', { minimumFractionDigits: 2 })}
                           </td>
-                          <td className="py-3.5 px-4 text-right font-mono text-slate-700">
-                            ${(u.usdtBalance || 0).toFixed(2)}
+                          <td className="py-3.5 px-4 text-center font-sans">
+                            <div className="flex flex-col items-center gap-1">
+                              {u.dailyProfitEnabled ? (
+                                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300 flex items-center gap-1 shadow-2xs">
+                                  <Coins className="w-3 h-3 text-emerald-600" />
+                                  ${u.dailyProfitAmount || 0} / day
+                                </span>
+                              ) : (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-500 border border-slate-200">
+                                  OFF
+                                </span>
+                              )}
+                              <div className="flex items-center gap-1 text-[10px]">
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleDailyProfitUser(u)}
+                                  className={`px-1.5 py-0.5 rounded font-bold transition cursor-pointer ${
+                                    u.dailyProfitEnabled
+                                      ? 'bg-slate-100 hover:bg-slate-200 text-slate-600'
+                                      : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'
+                                  }`}
+                                >
+                                  {u.dailyProfitEnabled ? 'Turn OFF' : 'Turn ON'}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSetDailyProfitAmount(u)}
+                                  className="px-1.5 py-0.5 rounded font-bold bg-blue-50 hover:bg-blue-100 text-[#0088ff] border border-blue-200 transition cursor-pointer"
+                                  title="Set Daily Profit Amount"
+                                >
+                                  Set $
+                                </button>
+                              </div>
+                            </div>
                           </td>
                           <td className="py-3.5 px-4 text-center">
                             {u.isBlocked ? (
@@ -1300,34 +1535,44 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
                           </td>
                           <td className="py-3.5 px-4 text-center">
                             <div className="flex items-center justify-center gap-1.5 flex-wrap">
+                              {/* Quick Edit Balance Button */}
+                              <button
+                                type="button"
+                                onClick={() => handleOpenQuickBalance(u)}
+                                className="px-2 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-bold text-[11px] rounded-lg transition cursor-pointer flex items-center gap-1 border border-emerald-200 shadow-2xs"
+                                title="Directly view and edit real-time user balance"
+                              >
+                                <Coins className="w-3.5 h-3.5" /> Balance
+                              </button>
+
                               {/* Edit Details Button */}
                               <button
                                 type="button"
                                 onClick={() => handleOpenEditUser(u)}
-                                className="px-2.5 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#0088ff] font-bold text-[11px] rounded-lg transition cursor-pointer flex items-center gap-1 border border-blue-200"
+                                className="px-2 py-1.5 bg-blue-50 hover:bg-blue-100 text-[#0088ff] font-bold text-[11px] rounded-lg transition cursor-pointer flex items-center gap-1 border border-blue-200"
                               >
-                                <Edit3 className="w-3.5 h-3.5" /> Edit
+                                <Edit3 className="w-3.5 h-3.5" /> Details
                               </button>
 
                               {/* Toggle Withdraw Lock */}
                               <button
                                 type="button"
                                 onClick={() => handleToggleWithdrawLockUser(u)}
-                                className={`px-2.5 py-1.5 font-bold text-[11px] rounded-lg transition cursor-pointer flex items-center gap-1 border ${
+                                className={`px-2 py-1.5 font-bold text-[11px] rounded-lg transition cursor-pointer flex items-center gap-1 border ${
                                   u.isWithdrawLocked
                                     ? 'bg-amber-100 hover:bg-amber-200 text-amber-900 border-amber-300'
                                     : 'bg-slate-100 hover:bg-slate-200 text-slate-700 border-slate-300'
                                 }`}
                               >
                                 <ShieldAlert className="w-3.5 h-3.5" />
-                                {u.isWithdrawLocked ? 'Unlock W/D' : 'Lock W/D'}
+                                {u.isWithdrawLocked ? 'Unlock' : 'Lock'}
                               </button>
 
                               {/* Block / Unblock Toggle Button */}
                               <button
                                 type="button"
                                 onClick={() => handleToggleBlockUser(u)}
-                                className={`px-2.5 py-1.5 font-bold text-[11px] rounded-lg transition cursor-pointer flex items-center gap-1 border ${
+                                className={`px-2 py-1.5 font-bold text-[11px] rounded-lg transition cursor-pointer flex items-center gap-1 border ${
                                   u.isBlocked
                                     ? 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border-emerald-200'
                                     : 'bg-red-50 hover:bg-red-100 text-red-600 border-red-200'
@@ -1360,13 +1605,33 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
           <div className="space-y-6">
             {/* Pending Deposits Queue */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs p-6 space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
-                  <ArrowDownCircle className="w-4 h-4 text-emerald-600" /> Pending Deposit Requests
-                </h3>
-                <span className="text-xs bg-emerald-50 text-emerald-700 px-3 py-1 rounded-full font-bold border border-emerald-200">
-                  {pendingDepositsCount} Pending
-                </span>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-2">
+                  <ArrowDownCircle className="w-5 h-5 text-emerald-600" />
+                  <h3 className="font-extrabold text-sm text-slate-900">Pending Deposit Requests</h3>
+                  <span className="text-xs bg-emerald-50 text-emerald-700 px-3 py-0.5 rounded-full font-bold border border-emerald-200">
+                    {pendingDepositsCount} Pending
+                  </span>
+                </div>
+                <div className="relative w-full sm:w-64">
+                  <input
+                    type="text"
+                    value={requestSearchQuery}
+                    onChange={(e) => setRequestSearchQuery(e.target.value)}
+                    placeholder="Search by wallet address..."
+                    className="w-full pl-9 pr-7 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-none focus:border-[#0088ff] focus:ring-2 focus:ring-blue-100 transition"
+                  />
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                  {requestSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setRequestSearchQuery('')}
+                      className="absolute right-2.5 top-2 text-xs text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {pendingDepositsCount === 0 ? (
@@ -1384,50 +1649,65 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
-                      {logs.filter((l) => l.type === 'deposit' && l.status === 'pending').map((depLog) => (
-                        <tr key={depLog.id} className="hover:bg-slate-50 transition">
-                          <td className="py-3 px-4 text-slate-500">
-                            {new Date(depLog.timestamp).toLocaleString()}
-                          </td>
-                          <td className="py-3 px-4 text-slate-900 font-bold break-all select-all selection:bg-blue-100">
-                            {depLog.walletAddress}
-                          </td>
-                          <td className="py-3 px-4 text-emerald-600 font-extrabold text-sm">
-                            ${depLog.amount} {depLog.currency || 'USDT'}
-                          </td>
-                          <td className="py-3 px-4 font-sans">
-                            {depLog.proofImage ? (
-                              <button
-                                type="button"
-                                onClick={() => setSelectedProofModal(depLog.proofImage || null)}
-                                className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-[#0088ff] text-[11px] rounded-lg font-bold flex items-center gap-1 cursor-pointer transition border border-blue-200"
-                              >
-                                <Camera className="w-3.5 h-3.5" /> View Proof
-                              </button>
-                            ) : (
-                              <span className="text-slate-400 text-[10px]">No image attached</span>
-                            )}
-                          </td>
-                          <td className="py-3 px-4 font-sans">
-                            <div className="flex items-center justify-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => handleDepositAction(depLog.id, 'approve')}
-                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                              >
-                                <Check className="w-3.5 h-3.5" /> Approve & Add Dollars
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleDepositAction(depLog.id, 'reject')}
-                                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-xs transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                              >
-                                <X className="w-3.5 h-3.5" /> Reject
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                      {logs
+                        .filter(
+                          (l) =>
+                            l.type === 'deposit' &&
+                            l.status === 'pending' &&
+                            (!requestSearchQuery.trim() ||
+                              l.walletAddress.toLowerCase().includes(requestSearchQuery.trim().toLowerCase()))
+                        )
+                        .map((depLog) => (
+                          <tr key={depLog.id} className="hover:bg-slate-50 transition">
+                            <td className="py-3 px-4 text-slate-500 font-sans">
+                              {new Date(depLog.timestamp).toLocaleString()}
+                            </td>
+                            <td className="py-3 px-4 text-slate-900 font-bold break-all select-all selection:bg-blue-100">
+                              {depLog.walletAddress}
+                            </td>
+                            <td className="py-3 px-4 text-emerald-600 font-extrabold text-sm">
+                              ${depLog.amount} {depLog.currency || 'USDT'}
+                            </td>
+                            <td className="py-3 px-4 font-sans">
+                              {depLog.proofImage ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedProofModal(depLog.proofImage || null)}
+                                  className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-[#0088ff] text-[11px] rounded-lg font-bold flex items-center gap-1 cursor-pointer transition border border-blue-200"
+                                >
+                                  <Camera className="w-3.5 h-3.5" /> View Proof
+                                </button>
+                              ) : (
+                                <span className="text-slate-400 text-[10px]">No image attached</span>
+                              )}
+                            </td>
+                            <td className="py-3 px-4 font-sans">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  type="button"
+                                  disabled={approvingLogId === depLog.id}
+                                  onClick={() => handleDepositAction(depLog.id, 'approve')}
+                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-400 text-white rounded-lg font-bold text-xs transition cursor-pointer flex items-center gap-1.5 shadow-2xs"
+                                >
+                                  {approvingLogId === depLog.id ? (
+                                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Check className="w-3.5 h-3.5" />
+                                  )}
+                                  {approvingLogId === depLog.id ? 'Crediting...' : 'Approve & Add Dollars'}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={approvingLogId === depLog.id}
+                                  onClick={() => handleDepositAction(depLog.id, 'reject')}
+                                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-lg font-bold text-xs transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                                >
+                                  <X className="w-3.5 h-3.5" /> Reject
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
                     </tbody>
                   </table>
                 </div>
@@ -1459,37 +1739,45 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-slate-100 font-mono text-[11px]">
-                      {logs.filter((l) => l.type === 'withdraw' && l.status === 'pending').map((reqLog) => (
-                        <tr key={reqLog.id} className="hover:bg-slate-50 transition">
-                          <td className="py-3 px-4 text-slate-500">
-                            {new Date(reqLog.timestamp).toLocaleString()}
-                          </td>
-                          <td className="py-3 px-4 text-slate-900 font-bold break-all select-all selection:bg-blue-100">
-                            {reqLog.walletAddress}
-                          </td>
-                          <td className="py-3 px-4 text-amber-600 font-bold text-sm">
-                            ${reqLog.amount} {reqLog.currency}
-                          </td>
-                          <td className="py-3 px-4 font-sans">
-                            <div className="flex items-center justify-center gap-2">
-                              <button
-                                type="button"
-                                onClick={() => handleWithdrawalAction(reqLog.id, 'approve')}
-                                className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                              >
-                                <Check className="w-3.5 h-3.5" /> Approve Cashout
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleWithdrawalAction(reqLog.id, 'reject')}
-                                className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-xs transition cursor-pointer flex items-center gap-1 shadow-2xs"
-                              >
-                                <X className="w-3.5 h-3.5" /> Reject & Refund
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                      {logs
+                        .filter(
+                          (l) =>
+                            l.type === 'withdraw' &&
+                            l.status === 'pending' &&
+                            (!requestSearchQuery.trim() ||
+                              l.walletAddress.toLowerCase().includes(requestSearchQuery.trim().toLowerCase()))
+                        )
+                        .map((reqLog) => (
+                          <tr key={reqLog.id} className="hover:bg-slate-50 transition">
+                            <td className="py-3 px-4 text-slate-500 font-sans">
+                              {new Date(reqLog.timestamp).toLocaleString()}
+                            </td>
+                            <td className="py-3 px-4 text-slate-900 font-bold break-all select-all selection:bg-blue-100">
+                              {reqLog.walletAddress}
+                            </td>
+                            <td className="py-3 px-4 text-amber-600 font-bold text-sm">
+                              ${reqLog.amount} {reqLog.currency}
+                            </td>
+                            <td className="py-3 px-4 font-sans">
+                              <div className="flex items-center justify-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => handleWithdrawalAction(reqLog.id, 'approve')}
+                                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                                >
+                                  <Check className="w-3.5 h-3.5" /> Approve Cashout
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleWithdrawalAction(reqLog.id, 'reject')}
+                                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-xs transition cursor-pointer flex items-center gap-1 shadow-2xs"
+                                >
+                                  <X className="w-3.5 h-3.5" /> Reject & Refund
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
                     </tbody>
                   </table>
                 </div>
@@ -2249,6 +2537,60 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
                 </div>
               </div>
 
+              {/* Daily Profit Manual Controls (এডমিন থেকে manually on করে daily profit সেট করা) */}
+              <div className="p-3.5 bg-emerald-50/70 border border-emerald-200 rounded-2xl space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-extrabold text-emerald-950 flex items-center gap-1.5 cursor-pointer">
+                      <Coins className="w-4 h-4 text-emerald-600 shrink-0" />
+                      Daily Profit Auto-Accrual
+                    </label>
+                    <p className="text-[11px] text-emerald-700">
+                      Turn ON to credit this user a set dollar profit every 24 hours.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={editDailyProfitEnabled}
+                    onChange={(e) => setEditDailyProfitEnabled(e.target.checked)}
+                    className="w-4 h-4 accent-emerald-600 rounded cursor-pointer"
+                  />
+                </div>
+
+                {editDailyProfitEnabled && (
+                  <div className="space-y-2 pt-2 border-t border-emerald-100">
+                    <label className="text-xs font-bold text-emerald-900 block">
+                      Daily Profit Rate (USD / day)
+                    </label>
+                    <div className="relative">
+                      <span className="absolute left-3 top-2.5 text-xs font-bold text-emerald-700">$</span>
+                      <input
+                        type="number"
+                        step="any"
+                        value={editDailyProfitAmount}
+                        onChange={(e) => setEditDailyProfitAmount(e.target.value)}
+                        placeholder="e.g. 10, 25, 50"
+                        className="w-full pl-7 pr-20 py-2.5 bg-white border border-emerald-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-200"
+                      />
+                      <span className="absolute right-3 top-2.5 text-[11px] font-bold text-emerald-600">USDT / day</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 pt-1 flex-wrap">
+                      <span className="text-[10px] text-emerald-700 font-bold">Presets:</span>
+                      {[5, 10, 25, 50, 100].map((amt) => (
+                        <button
+                          key={amt}
+                          type="button"
+                          onClick={() => setEditDailyProfitAmount(amt.toString())}
+                          className="px-2 py-0.5 text-[10px] font-bold bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded-md transition"
+                        >
+                          +${amt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
               {/* Withdrawal Lock Controls */}
               <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-2.5">
                 <div className="flex items-center justify-between">
@@ -2294,6 +2636,101 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
                   className="flex-1 py-3 bg-[#0088ff] hover:bg-blue-600 text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-md"
                 >
                   Save Changes
+                </button>
+              </div>
+            </form>
+          </motion.div>
+        </div>
+      )}
+
+      {/* QUICK BALANCE EDIT MODAL (ইউজার এর রিয়েলটাইম ব্যালেন্স আপডেট করা) */}
+      {quickBalanceModalUser && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="bg-white rounded-3xl p-6 max-w-sm w-full border border-slate-200 shadow-2xl relative space-y-4"
+          >
+            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
+              <div>
+                <h4 className="font-extrabold text-base text-slate-900 flex items-center gap-2">
+                  <Coins className="w-5 h-5 text-emerald-600" /> Update Realtime Balance
+                </h4>
+                <p className="text-[11px] text-slate-500 font-mono mt-0.5 truncate max-w-[240px]">
+                  {quickBalanceModalUser.walletAddress}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setQuickBalanceModalUser(null)}
+                className="p-1 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveQuickBalance} className="space-y-3.5">
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Available USDT Balance
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-3 text-xs font-bold text-slate-400">$</span>
+                  <input
+                    type="number"
+                    step="any"
+                    value={quickUsdtVal}
+                    onChange={(e) => setQuickUsdtVal(e.target.value)}
+                    className="w-full pl-7 pr-16 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold font-mono text-slate-900 focus:outline-none focus:border-[#0088ff]"
+                    required
+                  />
+                  <span className="absolute right-3 top-3 text-xs font-bold text-slate-400">USDT</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Occupied Node Mining USDT
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-3 text-xs font-bold text-slate-400">$</span>
+                  <input
+                    type="number"
+                    step="any"
+                    value={quickOccupiedVal}
+                    onChange={(e) => setQuickOccupiedVal(e.target.value)}
+                    className="w-full pl-7 pr-16 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold font-mono text-slate-900 focus:outline-none focus:border-[#0088ff]"
+                  />
+                  <span className="absolute right-3 top-3 text-xs font-bold text-slate-400">USDT</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  ETH Balance
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  value={quickEthVal}
+                  onChange={(e) => setQuickEthVal(e.target.value)}
+                  className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold font-mono text-slate-900 focus:outline-none focus:border-[#0088ff]"
+                />
+              </div>
+
+              <div className="flex gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setQuickBalanceModalUser(null)}
+                  className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl shadow-md transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <Check className="w-4 h-4" /> Save Balance
                 </button>
               </div>
             </form>
