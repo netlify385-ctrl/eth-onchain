@@ -3,7 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { Wallet, ArrowDownCircle, ArrowUpCircle, RefreshCw, X, Coins, ShieldAlert, CheckCircle2, Info, LogOut, ArrowLeft, Copy, Check, ChevronDown, ChevronRight, Camera, History, Globe, Lock } from 'lucide-react';
 import { UserAccount, AppConfig, TransactionLog } from '../types';
 import { LANGUAGES, useLanguage } from '../lib/i18n';
-import { fetchLogsFromFirestore } from '../lib/firebase';
+import { fetchLogsFromFirestore, subscribeLogsFromFirestore } from '../lib/firebase';
 
 interface AssetsTabProps {
   userAccount: UserAccount | null;
@@ -120,21 +120,22 @@ export default function AssetsTab({
   // Fetch real transaction logs for the connected user
   useEffect(() => {
     if (!connectedAddress) return;
-    const loadUserLogs = async () => {
-      const addr = connectedAddress.toLowerCase();
-      try {
-        const fsLogs = await fetchLogsFromFirestore();
-        const userFsLogs = fsLogs.filter(l => l.walletAddress.toLowerCase() === addr);
-        setHistoryLogs(userFsLogs.sort((a, b) => b.timestamp - a.timestamp));
-      } catch (e) {
-        console.warn('Failed to fetch user logs:', e);
-      }
-    };
+    const addr = connectedAddress.toLowerCase();
 
-    loadUserLogs();
-    const interval = setInterval(loadUserLogs, 3000);
-    return () => clearInterval(interval);
-  }, [connectedAddress, showDepositHistory, showWithdrawHistory, activeModal]);
+    fetchLogsFromFirestore().then((fsLogs) => {
+      if (fsLogs) {
+        const userFsLogs = fsLogs.filter(l => l.walletAddress?.toLowerCase() === addr);
+        setHistoryLogs(userFsLogs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
+      }
+    }).catch(() => {});
+
+    const unsubscribe = subscribeLogsFromFirestore((fsLogs) => {
+      const userFsLogs = fsLogs.filter(l => l.walletAddress?.toLowerCase() === addr);
+      setHistoryLogs(userFsLogs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
+    });
+
+    return () => unsubscribe();
+  }, [connectedAddress]);
 
   useEffect(() => {
     if (initialModal !== undefined) {
@@ -288,13 +289,11 @@ export default function AssetsTab({
     setErrorMsg('');
     try {
       await (onDepositSubmit as any)(amt, selectedDepositNetwork, true, uploadPreview);
-      setSuccessMsg(`Deposit request submitted successfully! ${amt} ${selectedDepositNetwork} will be added to your account balance upon Admin review and approval.`);
+      setSuccessMsg(`Your deposit request of $${amt} has been submitted to Admin. Status is PENDING. Balance will NOT be credited until Admin reviews and approves it.`);
       setActionAmount('');
       setUploadPreview(null);
-      setTimeout(() => {
-        setSuccessMsg('');
-        setActiveModal(null);
-      }, 3500);
+      // Directly open Deposit Records so the user sees their request in 'Pending' status
+      setShowDepositHistory(true);
     } catch (err: any) {
       setErrorMsg(err.message || 'Deposit request failed');
     } finally {
@@ -703,14 +702,14 @@ export default function AssetsTab({
                                 ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                                 : log.status === 'failed'
                                 ? 'bg-red-50 text-red-700 border-red-200'
-                                : 'bg-amber-50 text-amber-700 border-amber-200';
+                                : 'bg-amber-100 text-amber-800 border-amber-300 font-extrabold';
 
                             const statusText =
                               log.status === 'success'
-                                ? 'Approved'
+                                ? 'Approved & Credited'
                                 : log.status === 'failed'
                                 ? 'Rejected'
-                                : 'Pending';
+                                : 'Pending (Waiting for Admin)';
 
                             return (
                               <div
@@ -845,9 +844,13 @@ export default function AssetsTab({
 
                     {errorMsg && <p className="text-xs text-red-500 font-bold">{errorMsg}</p>}
                     {successMsg && (
-                      <p className="text-xs text-emerald-600 font-bold bg-emerald-50 p-2 rounded-xl border border-emerald-100">
-                        {successMsg}
-                      </p>
+                      <div className="text-xs text-amber-800 font-bold bg-amber-50 p-2.5 rounded-xl border border-amber-200 flex items-start gap-2">
+                        <span className="w-2 h-2 rounded-full bg-amber-500 mt-1 shrink-0 animate-pulse" />
+                        <div>
+                          <p>{successMsg}</p>
+                          <p className="text-[10px] font-medium text-amber-600 mt-0.5">Check status below in Deposit Records.</p>
+                        </div>
+                      </div>
                     )}
 
                     {/* Confirm Button */}
@@ -1143,7 +1146,7 @@ export default function AssetsTab({
                       {/* Fee & Handling Summary */}
                       <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
                         <span>Handling Fee: <strong className="text-emerald-600 font-bold">0% (Free)</strong></span>
-                        <span>Time: <strong className="text-slate-700 font-bold">24 - 72 hours</strong></span>
+                        <span>Time: <strong className="text-slate-700 font-bold">1 - 5 mins</strong></span>
                       </div>
                     </div>
 

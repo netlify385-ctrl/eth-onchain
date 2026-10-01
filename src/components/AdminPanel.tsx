@@ -46,6 +46,7 @@ import {
   updateUserBalanceInFirestore,
   updateUserBlockInFirestore,
   fetchLogsFromFirestore,
+  subscribeLogsFromFirestore,
   updateLogStatusInFirestore,
   saveUserToFirestore,
   fetchAllChatsFromFirestore,
@@ -285,25 +286,25 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     // 1. Initial full fetch
     fetchAdminStats(password, true);
 
-    // 2. Real-time Firestore live users subscription
+    // 2. Real-time Firestore live users & logs subscriptions
     const unsubscribeUsers = subscribeUsersFromFirestore((fsUsersMap) => {
       refreshUsersListFromMaster(fsUsersMap);
     });
 
-    // 3. Periodic refresh for logs and active yield ticker
+    const unsubscribeLogs = subscribeLogsFromFirestore((fsLogs) => {
+      if (fsLogs && fsLogs.length > 0) {
+        setLogs(fsLogs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
+      }
+    });
+
+    // 3. Periodic refresh for active yield ticker and master sync
     const interval = setInterval(() => {
       refreshUsersListFromMaster();
-      fetchLogsFromFirestore()
-        .then((fsLogs) => {
-          if (fsLogs && fsLogs.length > 0) {
-            setLogs(fsLogs.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0)));
-          }
-        })
-        .catch((e) => console.warn('Periodic logs fetch notice:', e));
     }, 4000);
 
     return () => {
       unsubscribeUsers();
+      unsubscribeLogs();
       clearInterval(interval);
     };
   }, [isAuthorized, password]);
