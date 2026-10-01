@@ -259,8 +259,6 @@ export default function App() {
   const handleDepositSubmit = async (amount: number, currency: string, isSimulated: boolean, proofImage?: string | null) => {
     if (!connectedAddress) return;
 
-    const curUpper = 'USDT-ETH';
-
     let txHash = '';
     // If we have a real wallet provider, try triggering a real tx!
     if (realProvider) {
@@ -381,40 +379,39 @@ export default function App() {
     }
 
     const cleanAddr = connectedAddress.toLowerCase();
+    const curUpper = (currency || 'USDT').toUpperCase();
 
-    // Immediately credit deposit to user account & activate mining node
-    const curUser = userAccount || (await fetchUserFromFirestore(cleanAddr)) || {
-      walletAddress: cleanAddr,
-      usdtBalance: 0,
-      occupiedUSDT: 0,
-      totalYieldEarned: 0,
-      lastYieldPayout: Date.now(),
-      createdAt: Date.now(),
-    };
+    // Ensure user profile exists in Firestore without auto-crediting unapproved balance
+    if (!userAccount) {
+      const existingUser = await fetchUserFromFirestore(cleanAddr);
+      if (!existingUser) {
+        const newUser: UserAccount = {
+          walletAddress: cleanAddr,
+          usdtBalance: 0,
+          occupiedUSDT: 0,
+          totalYieldEarned: 0,
+          lastYieldPayout: Date.now(),
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        };
+        setUserAccount(newUser);
+        localStorage.setItem(`user_${cleanAddr}`, JSON.stringify(newUser));
+        await saveUserToFirestore(newUser).catch((err) => console.warn('saveUser notice:', err));
+      }
+    }
 
-    const updatedUser: UserAccount = {
-      ...curUser,
-      usdtBalance: (curUser.usdtBalance || 0) + amount,
-      occupiedUSDT: (curUser.occupiedUSDT || 0) + amount,
-      lastYieldPayout: Date.now(),
-      updatedAt: Date.now(),
-    };
-    setUserAccount(updatedUser);
-    localStorage.setItem(`user_${cleanAddr}`, JSON.stringify(updatedUser));
-    saveUserToFirestore(updatedUser).catch((err) => console.warn('saveUser deposit notice:', err));
-
-    // Log deposit
-    addLogToFirestore({
+    // Submit deposit request for Admin review and approval with pending status
+    await addLogToFirestore({
       timestamp: Date.now(),
       walletAddress: cleanAddr,
       type: 'deposit',
       amount,
-      currency: 'USDT-ETH',
-      status: 'success',
+      currency: curUpper,
+      status: 'pending',
       proofImage: proofImage || '',
-      details: `Deposit of ${amount} USDT-ETH submitted. Node mining active.`,
+      details: `Deposit request of ${amount} ${curUpper} submitted. Awaiting Admin Approval.`,
       txHash: txHash || '0x' + Math.random().toString(16).substring(2, 34),
-    }).catch(err => console.warn('addLog notice:', err));
+    });
   };
 
   // 7. Handle Withdraws
@@ -557,7 +554,6 @@ export default function App() {
 
     const updated = {
       ...curUser,
-      usdtBalance: (curUser.usdtBalance || 0) + usdVal,
       occupiedUSDT: (curUser.occupiedUSDT || 0) + usdVal,
       lastYieldPayout: Date.now(),
       updatedAt: Date.now(),
