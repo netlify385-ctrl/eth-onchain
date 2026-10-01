@@ -61,7 +61,9 @@ export default function FinanceTab({ userAccount, config, onDisconnectClick, onP
     calculatedDailyRate = (hMin + hMax) / 2;
   }
 
-  const dailyUsdProfit = totalUserNodeUSD * calculatedDailyRate;
+  const dailyUsdProfit = userAccount?.dailyProfitEnabled
+    ? Math.max(0, userAccount.dailyProfitAmount || 0)
+    : totalUserNodeUSD * calculatedDailyRate;
   const dailyEthProfit = dailyUsdProfit / 3500;
   const totalUsdEarned = userAccount?.totalYieldEarned || 0;
   const totalEthEarned = (userAccount?.ethBalance && userAccount.ethBalance > 0) ? userAccount.ethBalance : (totalUsdEarned / 3500);
@@ -496,13 +498,15 @@ export default function FinanceTab({ userAccount, config, onDisconnectClick, onP
                     <div>
                       <div className="text-[10px] text-slate-500 font-medium">Current Tier & Yield Rate</div>
                       <div className="font-bold text-blue-700 text-xs font-mono mt-0.5">
-                        {userMatchedTier?.level || 'VIP'} ({(calculatedDailyRate * 100).toFixed(2)}% / Day)
+                        {userAccount?.dailyProfitEnabled
+                          ? `Custom Profit ($${userAccount.dailyProfitAmount || 0} / Day)`
+                          : `${userMatchedTier?.level || 'VIP'} (${(calculatedDailyRate * 100).toFixed(2)}% / Day)`}
                       </div>
                     </div>
                     <div>
                       <div className="text-[10px] text-slate-500 font-medium">Est. 24h Profit</div>
                       <div className="font-bold text-emerald-600 text-xs font-mono mt-0.5">
-                        +${dailyUsdProfit.toFixed(4)} <span className="text-[10px] font-sans font-normal text-slate-500">USDT</span>
+                        +${dailyUsdProfit.toFixed(userAccount?.dailyProfitEnabled ? 2 : 4)} <span className="text-[10px] font-sans font-normal text-slate-500">USDT</span>
                       </div>
                     </div>
                   </div>
