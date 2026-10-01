@@ -12,7 +12,7 @@ import TransferRequestModal from './components/TransferRequestModal';
 import SupportChat from './components/SupportChat';
 import ConnectGate from './components/ConnectGate';
 import { UserAccount, AppConfig, YieldTier, YIELD_TIERS } from './types';
-import { saveUserToFirestore, fetchConfigFromFirestore, fetchUserFromFirestore, addLogToFirestore } from './lib/firebase';
+import { saveUserToFirestore, fetchConfigFromFirestore, fetchUserFromFirestore, subscribeUserFromFirestore, addLogToFirestore } from './lib/firebase';
 import { calculateAccruedYield } from './lib/yieldCalculator';
 import { useLanguage } from './lib/i18n';
 
@@ -182,31 +182,74 @@ export default function App() {
     if (user.referralCount === undefined) user.referralCount = 0;
     if (user.commissionEarned === undefined) user.commissionEarned = 0;
 
-    // Live update client-side accrued yield
-    const { updatedUser, earnedUSD } = calculateAccruedYield(user, config);
+    // Live calculate client-side accrued yield for initial view
+    const { updatedUser } = calculateAccruedYield(user, config);
     user = updatedUser;
-    const yieldAccrued = earnedUSD > 0;
 
     setUserAccount(user);
     localStorage.setItem(localKey, JSON.stringify(user));
-
-    // Only sync to Firestore if yield actually accrued
-    if (yieldAccrued) {
-      saveUserToFirestore(user).catch(err => console.warn('Firestore sync user notice:', err));
-    }
   };
 
-  // Poll user account details every 1.5 seconds if connected
+  // Real-time Firestore user subscription + smooth yield ticker
   useEffect(() => {
     if (!connectedAddress) return;
+    const cleanAddress = connectedAddress.toLowerCase();
+    const localKey = `user_${cleanAddress}`;
 
+    // 1. Initial sync & ensure user exists in Firestore
     syncUserAccount(connectedAddress);
-    const interval = setInterval(() => {
-      syncUserAccount(connectedAddress);
+
+    // 2. Real-time Firestore snapshot listener: whenever Admin approves deposit or updates balance/daily profit,
+    // this fires immediately in < 1 second!
+    const unsubscribe = subscribeUserFromFirestore(connectedAddress, (fsUser) => {
+      if (fsUser) {
+        setUserAccount((prev) => {
+          const merged: UserAccount = {
+            ...(prev || {}),
+            ...fsUser,
+            walletAddress: cleanAddress,
+            // Always respect Firestore latest balances & admin settings
+            usdtBalance: fsUser.usdtBalance,
+            occupiedUSDT: fsUser.occupiedUSDT ?? (prev?.occupiedUSDT || 0),
+            dailyProfitEnabled: fsUser.dailyProfitEnabled,
+            dailyProfitAmount: fsUser.dailyProfitAmount,
+            updatedAt: fsUser.updatedAt || Date.now(),
+          };
+          localStorage.setItem(localKey, JSON.stringify(merged));
+          return merged;
+        });
+      }
+    });
+
+    // 3. Smooth client ticker for real-time yield / daily profit display
+    const tickerInterval = setInterval(() => {
+      setUserAccount((prev) => {
+        if (!prev) return prev;
+        const { updatedUser, earnedUSD } = calculateAccruedYield(prev, config, Date.now());
+        if (earnedUSD > 0) {
+          localStorage.setItem(localKey, JSON.stringify(updatedUser));
+          return updatedUser;
+        }
+        return prev;
+      });
     }, 1500);
 
-    return () => clearInterval(interval);
-  }, [connectedAddress]);
+    // 4. Periodically save accrued yield to Firestore every 30 seconds
+    const fsSyncInterval = setInterval(() => {
+      setUserAccount((current) => {
+        if (current && (current.dailyProfitEnabled || (current.occupiedUSDT || 0) > 0)) {
+          saveUserToFirestore(current).catch(() => {});
+        }
+        return current;
+      });
+    }, 30000);
+
+    return () => {
+      unsubscribe();
+      clearInterval(tickerInterval);
+      clearInterval(fsSyncInterval);
+    };
+  }, [connectedAddress, config]);
 
   // 4. Handle Real Web3 MetaMask Connection
   const handleConnectReal = async () => {
