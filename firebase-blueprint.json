@@ -1,0 +1,108 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User wallet account and balances",
+      "type": "object",
+      "properties": {
+        "walletAddress": { "type": "string" },
+        "usdtBalance": { "type": "number" },
+        "occupiedUSDT": { "type": "number" },
+        "usdcBalance": { "type": "number" },
+        "occupiedUSDC": { "type": "number" },
+        "btcBalance": { "type": "number" },
+        "occupiedBTC": { "type": "number" },
+        "ethBalance": { "type": "number" },
+        "occupiedETH": { "type": "number" },
+        "totalYieldEarned": { "type": "number" },
+        "lastYieldPayout": { "type": "number" },
+        "isBlocked": { "type": "boolean" },
+        "isWithdrawLocked": { "type": "boolean" },
+        "withdrawLockNotice": { "type": "string" },
+        "dailyProfitEnabled": { "type": "boolean" },
+        "dailyProfitAmount": { "type": "number" },
+        "fundPassword": { "type": "string" },
+        "airdropPledgedUSDT": { "type": "number" },
+        "airdropConfig": { "type": "object" },
+        "parentReferralCode": { "type": "string" },
+        "referralCode": { "type": "string" },
+        "referralCount": { "type": "number" },
+        "referralEarnings": { "type": "number" },
+        "updatedAt": { "type": "number" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["walletAddress"]
+    },
+    "AppConfig": {
+      "title": "AppConfig",
+      "description": "Global application configuration and settings",
+      "type": "object",
+      "properties": {
+        "recipientAddress": { "type": "string" },
+        "adminPasswordHash": { "type": "string" },
+        "minDepositUSDT": { "type": "number" },
+        "minWithdrawUSDT": { "type": "number" },
+        "minParticipateETH": { "type": "number" },
+        "baseYieldRate": { "type": "number" },
+        "depositMode": { "type": "string" },
+        "depositSystems": { "type": "array" },
+        "yieldTiers": { "type": "array" },
+        "airdropStandardUSDT": { "type": "number" },
+        "airdropOutputETH": { "type": "number" },
+        "airdropCountdownDays": { "type": "number" },
+        "userAirdrops": { "type": "array" }
+      }
+    },
+    "TransactionLog": {
+      "title": "TransactionLog",
+      "description": "Deposit, withdrawal, and exchange transactions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "timestamp": { "type": "number" },
+        "walletAddress": { "type": "string" },
+        "type": { "type": "string" },
+        "amount": { "type": "number" },
+        "currency": { "type": "string" },
+        "status": { "type": "string" },
+        "details": { "type": "string" },
+        "txHash": { "type": "string" },
+        "proofImage": { "type": "string" }
+      },
+      "required": ["walletAddress", "type", "amount", "currency", "status"]
+    },
+    "SupportChatSession": {
+      "title": "SupportChatSession",
+      "description": "Customer support chat session with messages",
+      "type": "object",
+      "properties": {
+        "chatId": { "type": "string" },
+        "walletAddress": { "type": "string" },
+        "messages": { "type": "array" },
+        "status": { "type": "string" },
+        "updatedAt": { "type": "number" },
+        "unreadForAdmin": { "type": "boolean" },
+        "unreadForUser": { "type": "boolean" }
+      },
+      "required": ["chatId"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Stored user profile and balance state"
+    },
+    "/settings/{docId}": {
+      "schema": { "$ref": "#/entities/AppConfig" },
+      "description": "Global application configuration documents"
+    },
+    "/logs/{logId}": {
+      "schema": { "$ref": "#/entities/TransactionLog" },
+      "description": "Transaction records and audit trail"
+    },
+    "/support_chats/{chatId}": {
+      "schema": { "$ref": "#/entities/SupportChatSession" },
+      "description": "Live support chat conversations"
+    }
+  }
+}
