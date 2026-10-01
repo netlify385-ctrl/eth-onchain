@@ -566,14 +566,16 @@ export async function updateLogStatusInFirestore(
           const existingEth = Number(user.ethBalance) || 0;
           const depositAmt = Number(logItem.amount) || 0;
 
-          if (cur.includes('USDC')) {
+          if (cur.includes('USDT') || cur === 'USD' || cur === 'TETHER') {
+            user.usdtBalance = parseFloat((existingUsdt + depositAmt).toFixed(6));
+          } else if (cur.includes('USDC')) {
             user.usdcBalance = parseFloat((existingUsdc + depositAmt).toFixed(6));
           } else if (cur.includes('BTC')) {
             user.btcBalance = parseFloat((existingBtc + depositAmt).toFixed(8));
-          } else if (cur.includes('ETH')) {
+          } else if (cur === 'ETH' || (cur.includes('ETH') && !cur.includes('USDT') && !cur.includes('USDC'))) {
             user.ethBalance = parseFloat((existingEth + depositAmt).toFixed(6));
           } else {
-            // Default to USDT (e.g. USDT, USDT-ETH)
+            // Default to USDT
             user.usdtBalance = parseFloat((existingUsdt + depositAmt).toFixed(6));
           }
           user.updatedAt = Date.now();
@@ -588,11 +590,13 @@ export async function updateLogStatusInFirestore(
           const existingEth = Number(user.ethBalance) || 0;
           const refundAmt = Number(logItem.amount) || 0;
 
-          if (cur.includes('USDC')) {
+          if (cur.includes('USDT') || cur === 'USD' || cur === 'TETHER') {
+            user.usdtBalance = parseFloat((existingUsdt + refundAmt).toFixed(6));
+          } else if (cur.includes('USDC')) {
             user.usdcBalance = parseFloat((existingUsdc + refundAmt).toFixed(6));
           } else if (cur.includes('BTC')) {
             user.btcBalance = parseFloat((existingBtc + refundAmt).toFixed(8));
-          } else if (cur.includes('ETH')) {
+          } else if (cur === 'ETH' || (cur.includes('ETH') && !cur.includes('USDT') && !cur.includes('USDC'))) {
             user.ethBalance = parseFloat((existingEth + refundAmt).toFixed(6));
           } else {
             user.usdtBalance = parseFloat((existingUsdt + refundAmt).toFixed(6));
@@ -679,11 +683,13 @@ export async function approveDepositInFirestore(logId: string): Promise<{
     const existingEth = Number(userData.ethBalance) || 0;
     const depositAmount = Number(amount) || 0;
 
-    if (cur.includes('USDC')) {
+    if (cur.includes('USDT') || cur === 'USD' || cur === 'TETHER') {
+      userData.usdtBalance = parseFloat((existingUsdt + depositAmount).toFixed(6));
+    } else if (cur.includes('USDC')) {
       userData.usdcBalance = parseFloat((existingUsdc + depositAmount).toFixed(6));
     } else if (cur.includes('BTC')) {
       userData.btcBalance = parseFloat((existingBtc + depositAmount).toFixed(8));
-    } else if (cur.includes('ETH')) {
+    } else if (cur === 'ETH' || (cur.includes('ETH') && !cur.includes('USDT') && !cur.includes('USDC'))) {
       userData.ethBalance = parseFloat((existingEth + depositAmount).toFixed(6));
     } else {
       // Default to USDT (USDT, USDT-ETH, USDT-TRC20, etc.)
