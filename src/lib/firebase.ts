@@ -426,6 +426,30 @@ export async function addLogToFirestore(log: Omit<TransactionLog, 'id'> & { id?:
 }
 
 /**
+ * Subscribe to real-time logs from Firestore
+ */
+export function subscribeLogsFromFirestore(callback: (logs: TransactionLog[]) => void): Unsubscribe {
+  return onSnapshot(
+    collection(db, 'logs'),
+    (snap) => {
+      const logsList: TransactionLog[] = [];
+      snap.forEach((d) => {
+        const data = d.data() as TransactionLog;
+        if (data && data.walletAddress) {
+          logsList.push({ ...data, id: d.id });
+        }
+      });
+      logsList.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+      localStorage.setItem('app_logs_store', JSON.stringify(logsList));
+      callback(logsList);
+    },
+    (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'logs');
+    }
+  );
+}
+
+/**
  * Fetch logs from Firestore
  */
 export async function fetchLogsFromFirestore(): Promise<TransactionLog[]> {
