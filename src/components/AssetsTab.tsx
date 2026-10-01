@@ -288,8 +288,8 @@ export default function AssetsTab({
     setLoading(true);
     setErrorMsg('');
     try {
-      await (onDepositSubmit as any)(amt, selectedDepositNetwork, true, uploadPreview);
-      setSuccessMsg(`Your deposit request of $${amt} has been submitted to Admin. Status is PENDING. Balance will NOT be credited until Admin reviews and approves it.`);
+      await (onDepositSubmit as any)(amt, 'USDT', true, uploadPreview);
+      setSuccessMsg(`Your deposit request of $${amt} USDT has been submitted to Admin. Status is PENDING. Balance will NOT be credited until Admin reviews and approves it.`);
       setActionAmount('');
       setUploadPreview(null);
       // Directly open Deposit Records so the user sees their request in 'Pending' status
