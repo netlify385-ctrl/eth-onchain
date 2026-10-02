@@ -499,7 +499,7 @@ export default function FinanceTab({ userAccount, config, onDisconnectClick, onP
                       <div className="text-[10px] text-slate-500 font-medium">Current Tier & Yield Rate</div>
                       <div className="font-bold text-blue-700 text-xs font-mono mt-0.5">
                         {userAccount?.dailyProfitEnabled
-                          ? `Custom Profit ($${userAccount.dailyProfitAmount || 0} / Day)`
+                          ? `Profit ($${userAccount.dailyProfitAmount || 0} / Day)`
                           : `${userMatchedTier?.level || 'VIP'} (${(calculatedDailyRate * 100).toFixed(2)}% / Day)`}
                       </div>
                     </div>
