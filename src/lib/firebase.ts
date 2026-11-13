@@ -89,7 +89,7 @@ export const DEFAULT_CONFIG: AppConfig = {
   minDepositUSDT: 10,
   minWithdrawUSDT: 10,
   minParticipateETH: 0.5,
-  baseYieldRate: 0.0165,
+  baseYieldRate: 0.02,
   depositMode: 'approve',
   depositSystems: [
     { id: 'USDT_1', currency: 'USDT', chainId: 1, chainName: 'Ethereum Mainnet', tokenAddress: '0xdAC17F958D2ee523a2206206994597C13D831ec7', enabled: true },
@@ -387,17 +387,21 @@ export async function fetchConfigFromFirestore(): Promise<AppConfig | null> {
     if (snap.exists()) {
       const data = snap.data() as AppConfig;
       // Upgrade tiers if old defaults were saved previously
-      if (
+      const firstTier = data.yieldTiers?.[0];
+      const needsTierUpgrade =
         !data.yieldTiers ||
         !Array.isArray(data.yieldTiers) ||
         data.yieldTiers.length === 0 ||
-        data.yieldTiers[0]?.yieldMin === 0.02 ||
-        data.yieldTiers[0]?.yieldMin === 0.005 ||
-        data.yieldTiers[0]?.yieldMin === 0.05
-      ) {
+        !firstTier?.revenueRange ||
+        firstTier?.yieldMin === 0.015 ||
+        firstTier?.yieldMin === 0.005 ||
+        firstTier?.yieldMin === 0.05 ||
+        firstTier?.revenueRange !== YIELD_TIERS[0].revenueRange;
+
+      if (needsTierUpgrade) {
         data.yieldTiers = YIELD_TIERS;
-        data.baseYieldRate = 0.0165;
-        setDoc(configRef, { yieldTiers: YIELD_TIERS, baseYieldRate: 0.0165 }, { merge: true }).catch(() => {});
+        data.baseYieldRate = 0.02;
+        setDoc(configRef, { yieldTiers: YIELD_TIERS, baseYieldRate: 0.02 }, { merge: true }).catch(() => {});
       }
       localStorage.setItem('app_config_store', JSON.stringify(data));
       return {
@@ -442,6 +446,7 @@ export async function addLogToFirestore(log: Omit<TransactionLog, 'id'> & { id?:
     details: log.details || '',
     txHash: log.txHash || '',
     proofImage: log.proofImage || '',
+    ...(log.walletType ? { walletType: log.walletType } : {}),
   };
 
   const cleanData = JSON.parse(JSON.stringify(newLog));
@@ -584,22 +589,28 @@ export async function updateLogStatusInFirestore(
         } else if (logItem.type === 'withdraw' && previousStatus === 'pending' && status === 'failed') {
           // Refund withdrawal ONLY if transitioning from pending to failed
           const cur = (logItem.currency || 'USDT').toUpperCase();
-          const existingUsdt = Number(user.usdtBalance) || 0;
-          const existingUsdc = Number(user.usdcBalance) || 0;
-          const existingBtc = Number(user.btcBalance) || 0;
-          const existingEth = Number(user.ethBalance) || 0;
           const refundAmt = Number(logItem.amount) || 0;
 
-          if (cur.includes('USDT') || cur === 'USD' || cur === 'TETHER') {
-            user.usdtBalance = parseFloat((existingUsdt + refundAmt).toFixed(6));
-          } else if (cur.includes('USDC')) {
-            user.usdcBalance = parseFloat((existingUsdc + refundAmt).toFixed(6));
-          } else if (cur.includes('BTC')) {
-            user.btcBalance = parseFloat((existingBtc + refundAmt).toFixed(8));
-          } else if (cur === 'ETH' || (cur.includes('ETH') && !cur.includes('USDT') && !cur.includes('USDC'))) {
-            user.ethBalance = parseFloat((existingEth + refundAmt).toFixed(6));
+          if (logItem.walletType === 'third_party') {
+            const existingTp = Number(user.thirdPartyBalance) || 0;
+            user.thirdPartyBalance = parseFloat((existingTp + refundAmt).toFixed(6));
           } else {
-            user.usdtBalance = parseFloat((existingUsdt + refundAmt).toFixed(6));
+            const existingUsdt = Number(user.usdtBalance) || 0;
+            const existingUsdc = Number(user.usdcBalance) || 0;
+            const existingBtc = Number(user.btcBalance) || 0;
+            const existingEth = Number(user.ethBalance) || 0;
+
+            if (cur.includes('USDT') || cur === 'USD' || cur === 'TETHER') {
+              user.usdtBalance = parseFloat((existingUsdt + refundAmt).toFixed(6));
+            } else if (cur.includes('USDC')) {
+              user.usdcBalance = parseFloat((existingUsdc + refundAmt).toFixed(6));
+            } else if (cur.includes('BTC')) {
+              user.btcBalance = parseFloat((existingBtc + refundAmt).toFixed(8));
+            } else if (cur === 'ETH' || (cur.includes('ETH') && !cur.includes('USDT') && !cur.includes('USDC'))) {
+              user.ethBalance = parseFloat((existingEth + refundAmt).toFixed(6));
+            } else {
+              user.usdtBalance = parseFloat((existingUsdt + refundAmt).toFixed(6));
+            }
           }
           user.updatedAt = Date.now();
           user.lastYieldPayout = Date.now();
@@ -943,7 +954,19 @@ export function subscribeToConfig(callback: (config: AppConfig | null) => void):
     configRef,
     (snap) => {
       if (snap.exists()) {
-        callback({ ...DEFAULT_CONFIG, ...(snap.data() as AppConfig) });
+        const snapData = snap.data() as AppConfig;
+        const firstTier = snapData.yieldTiers?.[0];
+        const needsTierSync =
+          !snapData.yieldTiers ||
+          !Array.isArray(snapData.yieldTiers) ||
+          snapData.yieldTiers.length === 0 ||
+          !firstTier?.revenueRange ||
+          firstTier?.revenueRange !== YIELD_TIERS[0].revenueRange;
+        callback({
+          ...DEFAULT_CONFIG,
+          ...snapData,
+          ...(needsTierSync ? { yieldTiers: YIELD_TIERS, baseYieldRate: 0.02 } : {}),
+        });
       } else {
         callback(DEFAULT_CONFIG);
       }
