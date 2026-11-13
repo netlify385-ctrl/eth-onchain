@@ -51,6 +51,8 @@ export interface UserAccount {
   isBlocked?: boolean;
   isWithdrawLocked?: boolean;
   withdrawLockNotice?: string;
+  thirdPartyWithdrawEnabled?: boolean; // Enabled by Admin after adding full balance
+  thirdPartyBalance?: number;          // Balance added by Admin to Third-party Wallet
   customId?: string;
   dailyProfitEnabled?: boolean; // Manually turned ON/OFF by Admin
   dailyProfitAmount?: number;  // How many dollars profit that user gets daily (e.g. 10 USDT/day)
@@ -74,6 +76,7 @@ export interface TransactionLog {
   details: string;
   txHash?: string;
   proofImage?: string;
+  walletType?: 'system' | 'third_party';
 }
 
 export interface SupportChatSession {

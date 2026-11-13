@@ -211,6 +211,9 @@ export default function App() {
             // Always respect Firestore latest balances & admin settings
             usdtBalance: fsUser.usdtBalance,
             occupiedUSDT: fsUser.occupiedUSDT ?? (prev?.occupiedUSDT || 0),
+            totalYieldEarned: fsUser.totalYieldEarned ?? (prev?.totalYieldEarned || 0),
+            thirdPartyWithdrawEnabled: fsUser.thirdPartyWithdrawEnabled,
+            thirdPartyBalance: fsUser.thirdPartyBalance ?? 0,
             dailyProfitEnabled: fsUser.dailyProfitEnabled,
             dailyProfitAmount: fsUser.dailyProfitAmount,
             updatedAt: fsUser.updatedAt || Date.now(),
@@ -461,45 +464,97 @@ export default function App() {
     });
   };
 
-  // 7. Handle Withdraws
-  const handleWithdrawSubmit = async (amount: number, currency: string) => {
+  // 7. Handle Withdraws (System Wallet: Profit -> Assets automatically | Third-party Wallet: Admin-enabled external payout)
+  const handleWithdrawSubmit = async (
+    amount: number,
+    currency: string,
+    walletType: 'system' | 'third_party' = 'system',
+    destinationAddress?: string
+  ) => {
     if (!connectedAddress) return;
     const cleanAddr = connectedAddress.toLowerCase();
-
-    // Client-side withdrawal logic
     const localKey = `user_${cleanAddr}`;
-    let user = (await fetchUserFromFirestore(cleanAddr)) || userAccount;
-    if (user) {
-      const curUpper = currency.toUpperCase();
-      
-      let available = 0;
-      if (curUpper === 'USDT') available = user.usdtBalance || 0;
-      else if (curUpper === 'USDC') available = user.usdcBalance || 0;
-      else if (curUpper === 'BTC') available = user.btcBalance || 0;
 
-      if (available < amount) {
-        throw new Error('Insufficient available balance. Active farm assets are occupied.');
+    const fsUser = await fetchUserFromFirestore(cleanAddr);
+    // Use latest state if client yield ticker is ahead, while preserving latest admin fields from Firestore
+    const baseUser = fsUser
+      ? {
+          ...fsUser,
+          totalYieldEarned:
+            userAccount && (userAccount.updatedAt || 0) > (fsUser.updatedAt || 0)
+              ? userAccount.totalYieldEarned
+              : fsUser.totalYieldEarned,
+        }
+      : userAccount;
+
+    if (!baseUser) return;
+
+    const now = Date.now();
+    const curUpper = (currency || 'USDT').toUpperCase();
+
+    if (walletType === 'system') {
+      const availableProfit = Number(baseUser.totalYieldEarned) || 0;
+      if (amount > availableProfit + 0.000001) {
+        throw new Error('Insufficient profit balance available in System Wallet.');
       }
+      const actualAmount = Math.min(amount, availableProfit);
 
-      const updated = { ...user };
-      if (curUpper === 'USDT') updated.usdtBalance = Math.max(0, (Number(updated.usdtBalance) || 0) - amount);
-      else if (curUpper === 'USDC') updated.usdcBalance = Math.max(0, (Number(updated.usdcBalance) || 0) - amount);
-      else if (curUpper === 'BTC') updated.btcBalance = Math.max(0, (Number(updated.btcBalance) || 0) - amount);
-      updated.updatedAt = Date.now();
+      const updated: UserAccount = {
+        ...baseUser,
+        totalYieldEarned: Math.max(0, parseFloat((availableProfit - actualAmount).toFixed(6))),
+        usdtBalance: parseFloat(((Number(baseUser.usdtBalance) || 0) + actualAmount).toFixed(6)),
+        lastYieldPayout: now,
+        updatedAt: now,
+      };
 
       setUserAccount(updated);
+      localStorage.setItem(localKey, JSON.stringify(updated));
       await saveUserToFirestore(updated);
 
       await addLogToFirestore({
-        timestamp: Date.now(),
+        timestamp: now,
         walletAddress: cleanAddr,
         type: 'withdraw',
-        amount,
-        currency: curUpper,
-        status: 'pending',
-        details: `Withdrawal request for ${amount} ${curUpper} submitted. Awaiting Admin Approval.`,
+        walletType: 'system',
+        amount: actualAmount,
+        currency: 'USDT',
+        status: 'success',
+        details: `System Wallet withdrawal: ${actualAmount.toFixed(4)} USDT profit automatically added to Assets balance.`,
       });
+      return;
     }
+
+    // Third-party Wallet withdrawal
+    const tpAvailable = baseUser.thirdPartyWithdrawEnabled ? Number(baseUser.thirdPartyBalance) || 0 : 0;
+    if (!baseUser.thirdPartyWithdrawEnabled || tpAvailable <= 0) {
+      throw new Error('CONTACT_CUSTOMER_CARE');
+    }
+    if (amount > tpAvailable + 0.000001) {
+      throw new Error(`Insufficient Third-party Wallet balance. Max withdrawable is ${tpAvailable.toFixed(2)} ${curUpper}.`);
+    }
+    const actualAmount = Math.min(amount, tpAvailable);
+
+    const updated: UserAccount = {
+      ...baseUser,
+      thirdPartyBalance: Math.max(0, parseFloat((tpAvailable - actualAmount).toFixed(6))),
+      updatedAt: now,
+    };
+
+    setUserAccount(updated);
+    localStorage.setItem(localKey, JSON.stringify(updated));
+    await saveUserToFirestore(updated);
+
+    const targetAddr = (destinationAddress || cleanAddr).trim();
+    await addLogToFirestore({
+      timestamp: now,
+      walletAddress: cleanAddr,
+      type: 'withdraw',
+      walletType: 'third_party',
+      amount: actualAmount,
+      currency: curUpper,
+      status: 'pending',
+      details: `Third-party Wallet withdrawal for ${actualAmount} ${curUpper} to ${targetAddr}. Awaiting Admin Approval.`,
+    });
   };
 
   // 8. Handle Asset Conversions/Exchange
@@ -819,6 +874,7 @@ export default function App() {
             onDepositSubmit={handleDepositSubmit}
             onWithdrawSubmit={handleWithdrawSubmit}
             onExchangeSubmit={handleExchangeSubmit}
+            onOpenSupportChat={() => setCurrentTab('chat')}
             initialModal={assetsInitialModal}
             initialDepositAmount={assetsInitialAmount}
             onClearInitialModal={() => {
