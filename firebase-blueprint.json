@@ -19,6 +19,8 @@
         "isBlocked": { "type": "boolean" },
         "isWithdrawLocked": { "type": "boolean" },
         "withdrawLockNotice": { "type": "string" },
+        "thirdPartyWithdrawEnabled": { "type": "boolean" },
+        "thirdPartyBalance": { "type": "number" },
         "dailyProfitEnabled": { "type": "boolean" },
         "dailyProfitAmount": { "type": "number" },
         "fundPassword": { "type": "string" },
@@ -67,7 +69,8 @@
         "status": { "type": "string" },
         "details": { "type": "string" },
         "txHash": { "type": "string" },
-        "proofImage": { "type": "string" }
+        "proofImage": { "type": "string" },
+        "walletType": { "type": "string" }
       },
       "required": ["walletAddress", "type", "amount", "currency", "status"]
     },
