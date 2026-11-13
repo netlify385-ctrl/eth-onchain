@@ -97,12 +97,10 @@ export function calculateAccruedYield(
   }
 
   const currentTotalYield = Number(user.totalYieldEarned) || 0;
-  const currentUsdt = Number(user.usdtBalance) || 0;
 
   const updatedUser: UserAccount = {
     ...user,
     totalYieldEarned: parseFloat((currentTotalYield + earnedUSD).toFixed(6)),
-    usdtBalance: parseFloat((currentUsdt + earnedUSD).toFixed(6)),
     lastYieldPayout: now,
     updatedAt: now,
   };
