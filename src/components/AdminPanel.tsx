@@ -142,12 +142,18 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
   const [editWithdrawLockNotice, setEditWithdrawLockNotice] = useState('');
   const [editDailyProfitEnabled, setEditDailyProfitEnabled] = useState(false);
   const [editDailyProfitAmount, setEditDailyProfitAmount] = useState('0');
+  const [editTotalYieldEarned, setEditTotalYieldEarned] = useState('0');
+  const [editThirdPartyEnabled, setEditThirdPartyEnabled] = useState(false);
+  const [editThirdPartyBalance, setEditThirdPartyBalance] = useState('0');
 
   // Quick Balance Modal State
   const [quickBalanceModalUser, setQuickBalanceModalUser] = useState<UserAccount | null>(null);
   const [quickUsdtVal, setQuickUsdtVal] = useState('');
   const [quickOccupiedVal, setQuickOccupiedVal] = useState('');
   const [quickEthVal, setQuickEthVal] = useState('');
+  const [quickProfitVal, setQuickProfitVal] = useState('');
+  const [quickThirdPartyEnabled, setQuickThirdPartyEnabled] = useState(false);
+  const [quickThirdPartyVal, setQuickThirdPartyVal] = useState('');
 
   // General Loading States
   const [loading, setLoading] = useState(false);
@@ -617,6 +623,9 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     setEditWithdrawLockNotice(user.withdrawLockNotice || 'Withdrawal Locked. Please contact support.');
     setEditDailyProfitEnabled(!!user.dailyProfitEnabled);
     setEditDailyProfitAmount((user.dailyProfitAmount ?? 0).toString());
+    setEditTotalYieldEarned((user.totalYieldEarned ?? 0).toString());
+    setEditThirdPartyEnabled(!!user.thirdPartyWithdrawEnabled);
+    setEditThirdPartyBalance((user.thirdPartyBalance ?? 0).toString());
   };
 
   // Save User Details Edit
@@ -632,6 +641,7 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     const now = Date.now();
     const dailyProfitEnabled = editDailyProfitEnabled;
     const dailyProfitAmount = Math.max(0, parseFloat(editDailyProfitAmount) || 0);
+    const tpBalance = Math.max(0, parseFloat(editThirdPartyBalance) || 0);
 
     const updatedUser: UserAccount = {
       ...editingUser,
@@ -640,9 +650,12 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
       usdcBalance: parseFloat(editUsdcBalance) || 0,
       btcBalance: parseFloat(editBtcBalance) || 0,
       ethBalance: parseFloat(editEthBalance) || 0,
+      totalYieldEarned: Math.max(0, parseFloat(editTotalYieldEarned) || 0),
+      thirdPartyWithdrawEnabled: editThirdPartyEnabled,
+      thirdPartyBalance: tpBalance,
       dailyProfitEnabled,
       dailyProfitAmount,
-      isWithdrawLocked: editIsWithdrawLocked,
+      isWithdrawLocked: editThirdPartyEnabled ? false : editIsWithdrawLocked,
       withdrawLockNotice: editWithdrawLockNotice,
       lastYieldPayout: now,
       updatedAt: now,
@@ -672,6 +685,9 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     setQuickUsdtVal((user.usdtBalance || 0).toString());
     setQuickOccupiedVal((user.occupiedUSDT || 0).toString());
     setQuickEthVal((user.ethBalance || 0).toString());
+    setQuickProfitVal((user.totalYieldEarned || 0).toString());
+    setQuickThirdPartyEnabled(!!user.thirdPartyWithdrawEnabled);
+    setQuickThirdPartyVal((user.thirdPartyBalance || 0).toString());
   };
 
   const handleSaveQuickBalance = async (e: React.FormEvent) => {
@@ -681,12 +697,18 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     const newUsdt = parseFloat(quickUsdtVal) || 0;
     const newOccupied = parseFloat(quickOccupiedVal) || 0;
     const newEth = parseFloat(quickEthVal) || 0;
+    const newProfit = Math.max(0, parseFloat(quickProfitVal) || 0);
+    const newTpVal = Math.max(0, parseFloat(quickThirdPartyVal) || 0);
 
     const updatedUser: UserAccount = {
       ...quickBalanceModalUser,
       usdtBalance: newUsdt,
       occupiedUSDT: newOccupied,
       ethBalance: newEth,
+      totalYieldEarned: newProfit,
+      thirdPartyWithdrawEnabled: quickThirdPartyEnabled,
+      thirdPartyBalance: newTpVal,
+      isWithdrawLocked: quickThirdPartyEnabled ? false : quickBalanceModalUser.isWithdrawLocked,
       updatedAt: Date.now(),
       lastYieldPayout: Date.now(),
     };
@@ -696,7 +718,7 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
     localStorage.setItem(`user_${addr}`, JSON.stringify(updatedUser));
     await saveUserToFirestore(updatedUser);
 
-    setSuccessMsg(`Balance updated for ${addr.slice(0, 8)}...: Available $${newUsdt.toFixed(2)} USDT, Occupied $${newOccupied.toFixed(2)} USDT.`);
+    setSuccessMsg(`Balance updated for ${addr.slice(0, 8)}...: Assets $${newUsdt.toFixed(2)} USDT, Profit $${newProfit.toFixed(2)} USDT${quickThirdPartyEnabled ? `, 3P Wallet $${newTpVal.toFixed(2)}` : ''}.`);
     setQuickBalanceModalUser(null);
     setTimeout(() => setSuccessMsg(''), 4000);
   };
@@ -1467,6 +1489,14 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
                             <div className="font-extrabold text-slate-900 text-sm">
                               ${(u.usdtBalance || 0).toFixed(2)} <span className="text-[10px] text-slate-500 font-normal">USDT</span>
                             </div>
+                            <div className="text-[10px] text-emerald-600 font-bold">
+                              Profit: ${(u.totalYieldEarned || 0).toFixed(4)}
+                            </div>
+                            {u.thirdPartyWithdrawEnabled && (
+                              <div className="text-[10px] text-[#0088ff] font-bold">
+                                3P Wallet: ${(u.thirdPartyBalance || 0).toFixed(2)}
+                              </div>
+                            )}
                             {(u.ethBalance || 0) > 0 && (
                               <div className="text-[10px] text-slate-500 font-semibold">
                                 {(u.ethBalance || 0).toFixed(4)} ETH
@@ -2591,6 +2621,69 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
                 )}
               </div>
 
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Total Profit Balance (System Wallet Withdrawable)
+                </label>
+                <input
+                  type="number"
+                  step="any"
+                  value={editTotalYieldEarned}
+                  onChange={(e) => setEditTotalYieldEarned(e.target.value)}
+                  className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold font-mono text-emerald-700 focus:outline-none focus:border-[#0088ff]"
+                />
+              </div>
+
+              {/* Third-party Wallet Withdrawal Controls */}
+              <div className="p-3.5 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-xs font-extrabold text-blue-950 flex items-center gap-1.5 cursor-pointer">
+                      <Wallet className="w-4 h-4 text-[#0088ff] shrink-0" />
+                      Third-party Wallet Withdrawal
+                    </label>
+                    <p className="text-[11px] text-blue-700">
+                      Only allow external withdrawal when full balance is added here.
+                    </p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={editThirdPartyEnabled}
+                    onChange={(e) => setEditThirdPartyEnabled(e.target.checked)}
+                    className="w-4 h-4 accent-[#0088ff] rounded cursor-pointer"
+                  />
+                </div>
+                <div className="space-y-2 pt-2 border-t border-blue-100">
+                  <div className="flex items-center justify-between">
+                    <label className="text-xs font-bold text-blue-900">
+                      Third-party Wallet Balance (USDT)
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const fullBal =
+                          (parseFloat(editUsdtBalance) || 0) +
+                          (parseFloat(editOccupiedUSDT) || 0) +
+                          (parseFloat(editTotalYieldEarned) || 0);
+                        setEditThirdPartyBalance(fullBal.toFixed(4));
+                        setEditThirdPartyEnabled(true);
+                        setEditIsWithdrawLocked(false);
+                      }}
+                      className="px-2 py-1 bg-[#0088ff] hover:bg-blue-600 text-white text-[10px] font-bold rounded-lg transition cursor-pointer"
+                    >
+                      Add Full Balance
+                    </button>
+                  </div>
+                  <input
+                    type="number"
+                    step="any"
+                    value={editThirdPartyBalance}
+                    onChange={(e) => setEditThirdPartyBalance(e.target.value)}
+                    className="w-full p-2.5 bg-white border border-blue-300 rounded-xl text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+              </div>
+
               {/* Withdrawal Lock Controls */}
               <div className="p-3 bg-amber-50/70 border border-amber-200 rounded-2xl space-y-2.5">
                 <div className="flex items-center justify-between">
@@ -2715,6 +2808,62 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
                   value={quickEthVal}
                   onChange={(e) => setQuickEthVal(e.target.value)}
                   className="w-full px-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold font-mono text-slate-900 focus:outline-none focus:border-[#0088ff]"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Total Profit Balance (System Wallet)
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-3 text-xs font-bold text-emerald-500">$</span>
+                  <input
+                    type="number"
+                    step="any"
+                    value={quickProfitVal}
+                    onChange={(e) => setQuickProfitVal(e.target.value)}
+                    className="w-full pl-7 pr-16 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm font-bold font-mono text-emerald-700 focus:outline-none focus:border-[#0088ff]"
+                  />
+                  <span className="absolute right-3 top-3 text-xs font-bold text-slate-400">USDT</span>
+                </div>
+              </div>
+
+              {/* Third-party Wallet Controls */}
+              <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-2xl space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-extrabold text-blue-950 cursor-pointer">
+                    Enable Third-party Wallet
+                  </label>
+                  <input
+                    type="checkbox"
+                    checked={quickThirdPartyEnabled}
+                    onChange={(e) => setQuickThirdPartyEnabled(e.target.checked)}
+                    className="w-4 h-4 accent-[#0088ff] rounded cursor-pointer"
+                  />
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold text-blue-800">3P Balance (USDT)</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const fullBal =
+                        (parseFloat(quickUsdtVal) || 0) +
+                        (parseFloat(quickOccupiedVal) || 0) +
+                        (parseFloat(quickProfitVal) || 0);
+                      setQuickThirdPartyVal(fullBal.toFixed(4));
+                      setQuickThirdPartyEnabled(true);
+                    }}
+                    className="px-2 py-1 bg-[#0088ff] hover:bg-blue-600 text-white text-[10px] font-bold rounded-lg transition cursor-pointer"
+                  >
+                    Add Full Balance
+                  </button>
+                </div>
+                <input
+                  type="number"
+                  step="any"
+                  value={quickThirdPartyVal}
+                  onChange={(e) => setQuickThirdPartyVal(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-blue-300 rounded-xl text-sm font-bold font-mono text-slate-900 focus:outline-none focus:border-[#0088ff]"
                 />
               </div>
 
