@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Wallet, ArrowDownCircle, ArrowUpCircle, RefreshCw, X, Coins, ShieldAlert, CheckCircle2, Info, LogOut, ArrowLeft, Copy, Check, ChevronDown, ChevronRight, Camera, History, Globe, Lock } from 'lucide-react';
+import { Wallet, ArrowDownCircle, ArrowUpCircle, RefreshCw, X, Coins, ShieldAlert, CheckCircle2, Info, LogOut, ArrowLeft, Copy, Check, ChevronDown, ChevronRight, Camera, History, Globe, Lock, Users, Headphones } from 'lucide-react';
 import { UserAccount, AppConfig, TransactionLog } from '../types';
 import { LANGUAGES, useLanguage } from '../lib/i18n';
 import { fetchLogsFromFirestore, subscribeLogsFromFirestore } from '../lib/firebase';
@@ -12,8 +12,9 @@ interface AssetsTabProps {
   onConnectClick: () => void;
   onDisconnectClick: () => void;
   onDepositSubmit: (amount: number, currency: string, isSimulated: boolean) => Promise<void>;
-  onWithdrawSubmit: (amount: number, currency: string) => Promise<void>;
+  onWithdrawSubmit: (amount: number, currency: string, walletType?: 'system' | 'third_party', destinationAddress?: string) => Promise<void>;
   onExchangeSubmit: (fromCurrency: string, toCurrency: string, amount: number) => Promise<void>;
+  onOpenSupportChat?: () => void;
   initialModal?: 'deposit' | 'withdraw' | 'exchange' | null;
   initialDepositAmount?: string;
   onClearInitialModal?: () => void;
@@ -28,6 +29,7 @@ export default function AssetsTab({
   onDepositSubmit,
   onWithdrawSubmit,
   onExchangeSubmit,
+  onOpenSupportChat,
   initialModal = null,
   initialDepositAmount = '',
   onClearInitialModal
@@ -43,10 +45,12 @@ export default function AssetsTab({
   const [showDepositHistory, setShowDepositHistory] = useState(false);
 
   // Withdraw page custom states
+  const [withdrawWalletType, setWithdrawWalletType] = useState<'system' | 'third_party'>('system');
   const [withdrawAddressInput, setWithdrawAddressInput] = useState('');
   const [withdrawCurrency, setWithdrawCurrency] = useState('USDT-ETH');
   const [showWithdrawCurrencyDropdown, setShowWithdrawCurrencyDropdown] = useState(false);
   const [showWithdrawHistory, setShowWithdrawHistory] = useState(false);
+  const [showCustomerCarePopup, setShowCustomerCarePopup] = useState(false);
 
   const [exchangeFrom, setExchangeFrom] = useState('USDT');
   const [exchangeTo, setExchangeTo] = useState('USDC');
@@ -155,12 +159,6 @@ export default function AssetsTab({
 
   const minDepositUSDT = config?.minDepositUSDT ?? 10;
   const minWithdrawUSDT = config?.minWithdrawUSDT ?? 10;
-
-  useEffect(() => {
-    if (activeModal === 'withdraw' && !withdrawAddressInput) {
-      setWithdrawAddressInput(connectedAddress || '0x1d6afabf008892f1c04b39d8f42a7f4f5ecbd64c');
-    }
-  }, [activeModal, connectedAddress]);
 
   const [recipientAddress, setRecipientAddress] = useState(() => {
     return localStorage.getItem('custom_recipient_address') || config?.recipientAddress || '0x71C7656EC7ab88b098defB751B7401B5f6d1476B';
@@ -301,40 +299,90 @@ export default function AssetsTab({
     }
   };
 
+  const getWithdrawAvailableBalance = () => {
+    if (withdrawWalletType === 'system') {
+      return Number(account.totalYieldEarned) || 0;
+    }
+    return account.thirdPartyWithdrawEnabled ? (Number(account.thirdPartyBalance) || 0) : 0;
+  };
+
   const handleWithdraw = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (account.isWithdrawLocked) {
-      setErrorMsg(account.withdrawLockNotice || 'Your withdrawal functionality is locked by admin. Please contact support.');
+    if (account.isBlocked) {
+      setErrorMsg('Your account has been restricted by administrator.');
       return;
     }
+
+    if (withdrawWalletType === 'third_party') {
+      const tpAvail = account.thirdPartyWithdrawEnabled ? (Number(account.thirdPartyBalance) || 0) : 0;
+      if (!account.thirdPartyWithdrawEnabled || tpAvail <= 0) {
+        setShowCustomerCarePopup(true);
+        return;
+      }
+      if (account.isWithdrawLocked) {
+        setShowCustomerCarePopup(true);
+        return;
+      }
+      const amt = parseFloat(actionAmount);
+      if (isNaN(amt) || amt <= 0) {
+        setErrorMsg('Please enter a valid withdrawal amount.');
+        return;
+      }
+      if (amt < minWithdrawUSDT) {
+        setErrorMsg(`Minimum withdrawal amount is ${minWithdrawUSDT} ${selectedCurrency}.`);
+        return;
+      }
+      if (amt > tpAvail + 0.000001) {
+        setErrorMsg(`Insufficient available balance. Max withdrawable is ${tpAvail.toFixed(4)} ${selectedCurrency}.`);
+        return;
+      }
+      if (!withdrawAddressInput.trim()) {
+        setErrorMsg('Please enter a destination wallet address.');
+        return;
+      }
+      setLoading(true);
+      setErrorMsg('');
+      try {
+        await onWithdrawSubmit(amt, selectedCurrency, 'third_party', withdrawAddressInput.trim());
+        setSuccessMsg(`Withdrawal of ${amt} ${selectedCurrency} to ${withdrawAddressInput.trim().slice(0, 10)}... requested successfully!`);
+        setActionAmount('');
+        setTimeout(() => {
+          setSuccessMsg('');
+          setActiveModal(null);
+        }, 3000);
+      } catch (err: any) {
+        if (err?.message === 'CONTACT_CUSTOMER_CARE') {
+          setShowCustomerCarePopup(true);
+        } else {
+          setErrorMsg(err.message || 'Withdrawal failed');
+        }
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // System Wallet withdrawal: only profit balance, no minimum amount, automatically adds to Assets
     const amt = parseFloat(actionAmount);
     if (isNaN(amt) || amt <= 0) {
       setErrorMsg('Please enter a valid withdrawal amount.');
       return;
     }
-    if (amt < minWithdrawUSDT) {
-      setErrorMsg(`Minimum withdrawal amount is ${minWithdrawUSDT} ${selectedCurrency}.`);
-      return;
-    }
-    const avail = getAvailableBalanceFor(selectedCurrency);
-    if (amt > avail) {
-      setErrorMsg(`Insufficient available balance. Max withdrawable is ${avail} ${selectedCurrency}.`);
-      return;
-    }
-    if (!withdrawAddressInput.trim()) {
-      setErrorMsg('Please enter a valid withdrawal address.');
+    const availProfit = Number(account.totalYieldEarned) || 0;
+    if (amt > availProfit + 0.000001) {
+      setErrorMsg(`Insufficient profit balance. Max withdrawable is ${availProfit.toFixed(4)} USDT.`);
       return;
     }
     setLoading(true);
     setErrorMsg('');
     try {
-      await onWithdrawSubmit(amt, selectedCurrency);
-      setSuccessMsg(`Withdrawal of ${amt} ${selectedCurrency} requested successfully!`);
+      await onWithdrawSubmit(amt, 'USDT', 'system');
+      setSuccessMsg(`$${amt} USDT profit withdrawn and automatically added to your Assets balance!`);
       setActionAmount('');
       setTimeout(() => {
         setSuccessMsg('');
         setActiveModal(null);
-      }, 3000);
+      }, 2500);
     } catch (err: any) {
       setErrorMsg(err.message || 'Withdrawal failed');
     } finally {
@@ -501,7 +549,7 @@ export default function AssetsTab({
               {t('deposit')}
             </button>
             <button
-              onClick={() => { setSelectedCurrency('USDT'); setActionAmount(''); setErrorMsg(''); setSuccessMsg(''); setActiveModal('withdraw'); }}
+              onClick={() => { setSelectedCurrency('USDT'); setWithdrawWalletType('system'); setWithdrawAddressInput(''); setActionAmount(''); setErrorMsg(''); setSuccessMsg(''); setActiveModal('withdraw'); }}
               className="py-2.5 border border-white/30 bg-white/10 hover:bg-white/20 rounded-lg font-bold text-xs transition duration-200 cursor-pointer flex items-center justify-center gap-1.5 active:scale-95 text-white"
             >
               <ArrowUpCircle className="w-4 h-4" />
@@ -543,7 +591,7 @@ export default function AssetsTab({
                   +{(account.totalYieldEarned || 0).toFixed(6)} USDT
                 </span>
                 <div className="text-[11px] text-emerald-600 font-medium">
-                  Real-time continuous output accumulating into your available balance.
+                  Real-time continuous output accumulating into your profit balance.
                 </div>
               </div>
             </div>
@@ -1027,8 +1075,49 @@ export default function AssetsTab({
                   <form onSubmit={handleWithdraw} className="space-y-3">
                     {/* Unified Main Card */}
                     <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs space-y-3">
+                      {/* Wallet Type Selector (System Wallet / Third-party Wallet) */}
+                      <div>
+                        <span className="text-xs font-bold text-slate-800 block mb-2">Wallet Type</span>
+                        <div className="grid grid-cols-2 gap-2.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWithdrawWalletType('system');
+                              setActionAmount('');
+                              setErrorMsg('');
+                              setSuccessMsg('');
+                            }}
+                            className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                              withdrawWalletType === 'system'
+                                ? 'bg-[#0052d4] text-white shadow-sm border border-[#0052d4]'
+                                : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
+                            }`}
+                          >
+                            <Wallet className="w-4 h-4 shrink-0" />
+                            <span>System Wallet</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setWithdrawWalletType('third_party');
+                              setActionAmount('');
+                              setErrorMsg('');
+                              setSuccessMsg('');
+                            }}
+                            className={`py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                              withdrawWalletType === 'third_party'
+                                ? 'bg-[#0052d4] text-white shadow-sm border border-[#0052d4]'
+                                : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'
+                            }`}
+                          >
+                            <Users className="w-4 h-4 shrink-0" />
+                            <span>Third-party Wallet</span>
+                          </button>
+                        </div>
+                      </div>
+
                       {/* Currency Selector & Available balance */}
-                      <div className="flex items-center justify-between">
+                      <div className="flex items-center justify-between pt-0.5">
                         <span className="text-xs text-slate-500 font-bold">Asset</span>
                         <div className="relative">
                           <button
@@ -1074,13 +1163,13 @@ export default function AssetsTab({
                         <div>
                           <span className="text-[10px] text-slate-400 font-bold block">Available Balance</span>
                           <span className="font-mono font-extrabold text-base text-slate-900 leading-tight">
-                            {getAvailableBalanceFor(selectedCurrency).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}{' '}
+                            {getWithdrawAvailableBalance().toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 4 })}{' '}
                             <span className="text-xs font-bold text-slate-500">{selectedCurrency}</span>
                           </span>
                         </div>
                         <button
                           type="button"
-                          onClick={() => setActionAmount(getAvailableBalanceFor(selectedCurrency).toString())}
+                          onClick={() => setActionAmount(getWithdrawAvailableBalance().toString())}
                           className="px-2.5 py-1 bg-blue-50 hover:bg-blue-100 text-[#0052d4] font-bold text-xs rounded-lg transition cursor-pointer border border-blue-200"
                         >
                           Max All
@@ -1091,7 +1180,11 @@ export default function AssetsTab({
                       <div>
                         <div className="flex justify-between items-center mb-1">
                           <label className="text-xs font-bold text-slate-700">Withdraw Amount</label>
-                          <span className="text-[10px] text-slate-400">Min: <strong className="text-slate-600">{minWithdrawUSDT} {selectedCurrency}</strong></span>
+                          {withdrawWalletType === 'third_party' && (
+                            <span className="text-[10px] text-slate-400">
+                              Min: <strong className="text-slate-600">{minWithdrawUSDT} {selectedCurrency}</strong>
+                            </span>
+                          )}
                         </div>
                         <div className="relative">
                           <input
@@ -1113,13 +1206,16 @@ export default function AssetsTab({
                         {/* Quick Percentages */}
                         <div className="grid grid-cols-4 gap-1.5 mt-1.5">
                           {[0.25, 0.5, 0.75, 1.0].map((pct) => {
-                            const avail = getAvailableBalanceFor(selectedCurrency);
-                            const val = (avail * pct).toFixed(2);
+                            const avail = getWithdrawAvailableBalance();
+                            const val = (avail * pct).toFixed(4).replace(/\.?0+$/, '') || '0';
                             return (
                               <button
                                 key={pct}
                                 type="button"
-                                onClick={() => setActionAmount(val)}
+                                onClick={() => {
+                                  setActionAmount(val);
+                                  setErrorMsg('');
+                                }}
                                 className="py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[11px] font-bold transition cursor-pointer border border-slate-200/60"
                               >
                                 {pct * 100}%
@@ -1129,19 +1225,24 @@ export default function AssetsTab({
                         </div>
                       </div>
 
-                      {/* Destination Address */}
-                      <div>
-                        <div className="flex items-center justify-between mb-1">
-                          <label className="text-xs font-bold text-slate-700">Destination Address</label>
-                          <span className="text-[9px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded font-bold flex items-center gap-1 border border-emerald-200">
-                            <Check className="w-2.5 h-2.5 text-emerald-600" /> Connected
-                          </span>
+                      {/* Destination Address - Shown ONLY on Third-party Wallet */}
+                      {withdrawWalletType === 'third_party' && (
+                        <div>
+                          <div className="flex items-center justify-between mb-1">
+                            <label className="text-xs font-bold text-slate-700">Destination Address</label>
+                          </div>
+                          <input
+                            type="text"
+                            value={withdrawAddressInput}
+                            onChange={(e) => {
+                              setWithdrawAddressInput(e.target.value);
+                              setErrorMsg('');
+                            }}
+                            placeholder="Enter destination wallet address (0x...)"
+                            className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-xs font-bold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0066ff] focus:bg-white transition"
+                          />
                         </div>
-                        <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-mono text-[11px] font-bold text-slate-700 break-all select-all flex items-center justify-between gap-1.5">
-                          <span className="truncate">{connectedAddress || account.walletAddress || withdrawAddressInput}</span>
-                          <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        </div>
-                      </div>
+                      )}
 
                       {/* Fee & Handling Summary */}
                       <div className="flex items-center justify-between text-[11px] text-slate-500 pt-1 border-t border-slate-100">
@@ -1182,6 +1283,53 @@ export default function AssetsTab({
                 )}
               </div>
             </main>
+
+            {/* Contact Customer Care Popup Modal */}
+            <AnimatePresence>
+              {showCustomerCarePopup && (
+                <div className="fixed inset-0 z-[60] bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.94 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    exit={{ opacity: 0, scale: 0.94 }}
+                    className="bg-white rounded-3xl p-6 max-w-sm w-full border border-slate-200 shadow-2xl text-center space-y-4"
+                  >
+                    <div className="w-14 h-14 rounded-2xl bg-blue-50 border border-blue-100 text-[#0052d4] flex items-center justify-center mx-auto">
+                      <Headphones className="w-7 h-7" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <h3 className="text-base font-extrabold text-slate-900">Contact Customer Care</h3>
+                      <p className="text-xs text-slate-500 leading-relaxed font-medium">
+                        Third-party wallet withdrawal is currently unavailable. Please contact Customer Care to verify and enable your third-party wallet withdrawal.
+                      </p>
+                    </div>
+                    <div className="flex flex-col gap-2 pt-1">
+                      {onOpenSupportChat && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setShowCustomerCarePopup(false);
+                            setActiveModal(null);
+                            onOpenSupportChat();
+                          }}
+                          className="w-full py-3 bg-[#0052d4] hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition shadow-md shadow-blue-500/20 cursor-pointer flex items-center justify-center gap-2"
+                        >
+                          <Headphones className="w-4 h-4" />
+                          Contact Customer Care
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setShowCustomerCarePopup(false)}
+                        className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs rounded-xl transition cursor-pointer"
+                      >
+                        Close
+                      </button>
+                    </div>
+                  </motion.div>
+                </div>
+              )}
+            </AnimatePresence>
           </motion.div>
         )}
       </AnimatePresence>
