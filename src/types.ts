@@ -105,16 +105,19 @@ export interface YieldTier {
   level: string;
   minAmount: number;
   maxAmount: number;
-  yieldMin: number; // e.g. 0.0050 (0.50%)
-  yieldMax: number; // e.g. 0.0060 (0.60%)
+  yieldMin: number; // e.g. 0.0200 (2%)
+  yieldMax: number; // e.g. 0.0200 (2%)
   unit: string;
+  revenueRange?: string; // e.g. "2 ~ 20"
 }
 
 export const YIELD_TIERS: YieldTier[] = [
-  { level: 'VIP', minAmount: 100, maxAmount: 1000, yieldMin: 0.0150, yieldMax: 0.0180, unit: 'USDT' },
-  { level: 'VIP1', minAmount: 1000, maxAmount: 5000, yieldMin: 0.0180, yieldMax: 0.0200, unit: 'USDT' },
-  { level: 'VIP2', minAmount: 5000, maxAmount: 20000, yieldMin: 0.0200, yieldMax: 0.0220, unit: 'USDT' },
-  { level: 'VIP3', minAmount: 20000, maxAmount: 50000, yieldMin: 0.0220, yieldMax: 0.0260, unit: 'USDT' },
-  { level: 'VIP4', minAmount: 50000, maxAmount: 200000, yieldMin: 0.0260, yieldMax: 0.0300, unit: 'USDT' },
-  { level: 'VIP5', minAmount: 200000, maxAmount: 500000, yieldMin: 0.0300, yieldMax: 0.0400, unit: 'USDT' },
+  { level: 'VIP',  minAmount: 100,    maxAmount: 1000,    yieldMin: 0.020, yieldMax: 0.020, unit: 'USDT', revenueRange: '2 ~ 20' },
+  { level: 'VIP1', minAmount: 1001,   maxAmount: 5000,    yieldMin: 0.024, yieldMax: 0.024, unit: 'USDT', revenueRange: '24.02 ~ 120' },
+  { level: 'VIP2', minAmount: 5001,   maxAmount: 10000,   yieldMin: 0.026, yieldMax: 0.026, unit: 'USDT', revenueRange: '130.02 ~ 260' },
+  { level: 'VIP3', minAmount: 10001,  maxAmount: 20000,   yieldMin: 0.028, yieldMax: 0.028, unit: 'USDT', revenueRange: '280.02 ~ 559.99' },
+  { level: 'VIP4', minAmount: 20001,  maxAmount: 50000,   yieldMin: 0.030, yieldMax: 0.030, unit: 'USDT', revenueRange: '600.03 ~ 1500' },
+  { level: 'VIP5', minAmount: 50001,  maxAmount: 200000,  yieldMin: 0.032, yieldMax: 0.032, unit: 'USDT', revenueRange: '1600.03 ~ 6400' },
+  { level: 'VIP6', minAmount: 200001, maxAmount: 500000,  yieldMin: 0.040, yieldMax: 0.040, unit: 'USDT', revenueRange: '8000.04 ~ 20000' },
+  { level: 'VIP7', minAmount: 500001, maxAmount: 9999999, yieldMin: 0.050, yieldMax: 0.050, unit: 'USDT', revenueRange: '25000.05 ~ 499999.95' },
 ];
