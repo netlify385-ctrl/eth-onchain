@@ -95,7 +95,7 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
   const [depositMode, setDepositMode] = useState<'approve' | 'transfer'>('approve');
   const [depositSystems, setDepositSystems] = useState<any[]>([]);
   const [yieldTiers, setYieldTiers] = useState<YieldTier[]>(YIELD_TIERS);
-  const [baseYieldRatePercent, setBaseYieldRatePercent] = useState<number>(1.65);
+  const [baseYieldRatePercent, setBaseYieldRatePercent] = useState<number>(2);
 
   const handleTierChange = (index: number, field: keyof YieldTier, value: any) => {
     setYieldTiers((prev) => {
@@ -110,10 +110,10 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
       ...prev,
       {
         level: `VIP${prev.length}`,
-        minAmount: prev.length > 0 ? prev[prev.length - 1].maxAmount : 100,
+        minAmount: prev.length > 0 ? prev[prev.length - 1].maxAmount + 1 : 100,
         maxAmount: prev.length > 0 ? prev[prev.length - 1].maxAmount * 5 : 1000,
-        yieldMin: 0.0150,
-        yieldMax: 0.0180,
+        yieldMin: 0.02,
+        yieldMax: 0.02,
         unit: 'USDT',
       },
     ]);
