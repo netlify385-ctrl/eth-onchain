@@ -15,6 +15,7 @@ interface FinanceTabProps {
 
 export default function FinanceTab({ userAccount, config, onDisconnectClick, onParticipateClick, onOpenSupportChat }: FinanceTabProps) {
   const { t, setLanguage, langName } = useLanguage();
+  const isProfitChartVisible = config?.showProfitChart !== false;
   const activeTiers = config?.yieldTiers && config.yieldTiers.length > 0 ? config.yieldTiers : YIELD_TIERS;
   const userTotalUSDT = (userAccount?.occupiedUSDT || 0) + (userAccount?.usdtBalance || 0);
   const userTotalUSDC = (userAccount?.occupiedUSDC || 0) + (userAccount?.usdcBalance || 0);
@@ -350,72 +351,74 @@ export default function FinanceTab({ userAccount, config, onDisconnectClick, onP
             </div>
 
             {/* Tier Yield Rate Section */}
-            <div className="space-y-2.5">
-              <div className="flex justify-between items-center px-0.5">
-                <span className="font-extrabold text-slate-900 text-base flex items-center gap-1.5">
-                  <span className="text-slate-900 text-xs">■</span>
-                  Tier Yield Rate
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowHelp(!showHelp)}
-                  className="text-xs text-[#0066ff] hover:underline font-semibold cursor-pointer transition"
-                >
-                  View Help &gt;
-                </button>
-              </div>
+            {isProfitChartVisible && (
+              <div className="space-y-2.5">
+                <div className="flex justify-between items-center px-0.5">
+                  <span className="font-extrabold text-slate-900 text-base flex items-center gap-1.5">
+                    <span className="text-slate-900 text-xs">■</span>
+                    Tier Yield Rate
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowHelp(!showHelp)}
+                    className="text-xs text-[#0066ff] hover:underline font-semibold cursor-pointer transition"
+                  >
+                    View Help &gt;
+                  </button>
+                </div>
 
-              {showHelp && (
-                <motion.div
-                  initial={{ opacity: 0, y: -5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-blue-50/80 p-3.5 rounded-xl border border-blue-100 text-xs text-blue-900 space-y-1"
-                >
-                  <p className="font-bold">How Yield Tiers Work:</p>
-                  <p>Your yield level increases with your node balance. Rewards are accumulated and calculated automatically.</p>
-                </motion.div>
-              )}
+                {showHelp && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-blue-50/80 p-3.5 rounded-xl border border-blue-100 text-xs text-blue-900 space-y-1"
+                  >
+                    <p className="font-bold">How Yield Tiers Work:</p>
+                    <p>Your yield level increases with your node balance. Rewards are accumulated and calculated automatically.</p>
+                  </motion.div>
+                )}
 
-              {/* Exact Table displaying Yield Percentage and Revenue Range */}
-              <div className="bg-white overflow-x-auto border border-slate-400 rounded-sm shadow-2xs">
-                <table className="w-full text-center text-[11px] sm:text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-400 text-slate-900 font-bold">
-                      <th className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 font-bold whitespace-nowrap">Level</th>
-                      <th className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 font-bold whitespace-nowrap">Amount</th>
-                      <th className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 font-bold whitespace-nowrap">Yield</th>
-                      <th className="py-1.5 px-1 sm:py-2 sm:px-2 font-bold whitespace-nowrap">Revenue ({activeTiers[0]?.unit || 'USDT'})</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-400 text-slate-800 font-medium">
-                    {activeTiers.map((row, idx) => {
-                      const isCurrent = userMatchedTier?.level === row.level && totalUserNodeUSD >= 100;
-                      return (
-                        <tr key={idx} className={`border-b border-slate-400 last:border-b-0 ${isCurrent ? 'bg-blue-50/80 font-bold' : ''}`}>
-                          <td className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-medium whitespace-nowrap">
-                            <span className="inline-flex items-center justify-center gap-1">
-                              {row.level}
-                              {isCurrent && (
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block shrink-0" title="Your Current Tier" />
-                              )}
-                            </span>
-                          </td>
-                          <td className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-mono text-[10px] sm:text-xs whitespace-nowrap">
-                            {row.minAmount} ~ {row.maxAmount}
-                          </td>
-                          <td className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-mono text-[10px] sm:text-xs whitespace-nowrap">
-                            {formatYieldRate(row)}
-                          </td>
-                          <td className="py-1.5 px-1 sm:py-2 sm:px-2 text-slate-800 font-mono text-[10px] sm:text-xs whitespace-nowrap">
-                            {formatRevenueRange(row)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                {/* Exact Table displaying Yield Percentage and Revenue Range */}
+                <div className="bg-white overflow-x-auto border border-slate-400 rounded-sm shadow-2xs">
+                  <table className="w-full text-center text-[11px] sm:text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-400 text-slate-900 font-bold">
+                        <th className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 font-bold whitespace-nowrap">Level</th>
+                        <th className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 font-bold whitespace-nowrap">Amount</th>
+                        <th className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 font-bold whitespace-nowrap">Yield</th>
+                        <th className="py-1.5 px-1 sm:py-2 sm:px-2 font-bold whitespace-nowrap">Revenue ({activeTiers[0]?.unit || 'USDT'})</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-400 text-slate-800 font-medium">
+                      {activeTiers.map((row, idx) => {
+                        const isCurrent = userMatchedTier?.level === row.level && totalUserNodeUSD >= 100;
+                        return (
+                          <tr key={idx} className={`border-b border-slate-400 last:border-b-0 ${isCurrent ? 'bg-blue-50/80 font-bold' : ''}`}>
+                            <td className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-medium whitespace-nowrap">
+                              <span className="inline-flex items-center justify-center gap-1">
+                                {row.level}
+                                {isCurrent && (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block shrink-0" title="Your Current Tier" />
+                                )}
+                              </span>
+                            </td>
+                            <td className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-mono text-[10px] sm:text-xs whitespace-nowrap">
+                              {row.minAmount} ~ {row.maxAmount}
+                            </td>
+                            <td className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-mono text-[10px] sm:text-xs whitespace-nowrap">
+                              {formatYieldRate(row)}
+                            </td>
+                            <td className="py-1.5 px-1 sm:py-2 sm:px-2 text-slate-800 font-mono text-[10px] sm:text-xs whitespace-nowrap">
+                              {formatRevenueRange(row)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         ) : (
           /* On-chain Smart Wealth Management View - Matches Screenshot 2 */
@@ -527,72 +530,74 @@ export default function FinanceTab({ userAccount, config, onDisconnectClick, onP
             </div>
 
             {/* Tier Yield Rate Section - Matches user screenshot */}
-            <div className="space-y-2.5">
-              <div className="flex justify-between items-center px-0.5">
-                <span className="font-extrabold text-slate-900 text-base flex items-center gap-1.5">
-                  <span className="text-slate-900 text-xs">■</span>
-                  Tier Yield Rate
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setShowHelp(!showHelp)}
-                  className="text-xs text-[#0066ff] hover:underline font-semibold cursor-pointer transition"
-                >
-                  View Help &gt;
-                </button>
-              </div>
+            {isProfitChartVisible && (
+              <div className="space-y-2.5">
+                <div className="flex justify-between items-center px-0.5">
+                  <span className="font-extrabold text-slate-900 text-base flex items-center gap-1.5">
+                    <span className="text-slate-900 text-xs">■</span>
+                    Tier Yield Rate
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setShowHelp(!showHelp)}
+                    className="text-xs text-[#0066ff] hover:underline font-semibold cursor-pointer transition"
+                  >
+                    View Help &gt;
+                  </button>
+                </div>
 
-              {showHelp && (
-                <motion.div
-                  initial={{ opacity: 0, y: -5 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  className="bg-blue-50/80 p-3.5 rounded-xl border border-blue-100 text-xs text-blue-900 space-y-1"
-                >
-                  <p className="font-bold">How Yield Tiers Work:</p>
-                  <p>Your yield level increases with your node balance. Rewards are accumulated and calculated automatically.</p>
-                </motion.div>
-              )}
+                {showHelp && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -5 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="bg-blue-50/80 p-3.5 rounded-xl border border-blue-100 text-xs text-blue-900 space-y-1"
+                  >
+                    <p className="font-bold">How Yield Tiers Work:</p>
+                    <p>Your yield level increases with your node balance. Rewards are accumulated and calculated automatically.</p>
+                  </motion.div>
+                )}
 
-              {/* Exact Table displaying Yield Percentage and Revenue Range */}
-              <div className="bg-white overflow-x-auto border border-slate-400 rounded-sm shadow-2xs">
-                <table className="w-full text-center text-[11px] sm:text-xs border-collapse">
-                  <thead>
-                    <tr className="bg-slate-50 border-b border-slate-400 text-slate-900 font-bold">
-                      <th className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 font-bold whitespace-nowrap">Level</th>
-                      <th className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 font-bold whitespace-nowrap">Amount</th>
-                      <th className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 font-bold whitespace-nowrap">Yield</th>
-                      <th className="py-1.5 px-1 sm:py-2 sm:px-2 font-bold whitespace-nowrap">Revenue ({activeTiers[0]?.unit || 'USDT'})</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-400 text-slate-800 font-medium">
-                    {activeTiers.map((row, idx) => {
-                      const isCurrent = userMatchedTier?.level === row.level && totalUserNodeUSD >= 100;
-                      return (
-                        <tr key={idx} className={`border-b border-slate-400 last:border-b-0 ${isCurrent ? 'bg-blue-50/80 font-bold' : ''}`}>
-                          <td className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-medium whitespace-nowrap">
-                            <span className="inline-flex items-center justify-center gap-1">
-                              {row.level}
-                              {isCurrent && (
-                                <span className="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block shrink-0" title="Your Current Tier" />
-                              )}
-                            </span>
-                          </td>
-                          <td className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-mono text-[10px] sm:text-xs whitespace-nowrap">
-                            {row.minAmount} ~ {row.maxAmount}
-                          </td>
-                          <td className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-mono text-[10px] sm:text-xs whitespace-nowrap">
-                            {formatYieldRate(row)}
-                          </td>
-                          <td className="py-1.5 px-1 sm:py-2 sm:px-2 text-slate-800 font-mono text-[10px] sm:text-xs whitespace-nowrap">
-                            {formatRevenueRange(row)}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
+                {/* Exact Table displaying Yield Percentage and Revenue Range */}
+                <div className="bg-white overflow-x-auto border border-slate-400 rounded-sm shadow-2xs">
+                  <table className="w-full text-center text-[11px] sm:text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-400 text-slate-900 font-bold">
+                        <th className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 font-bold whitespace-nowrap">Level</th>
+                        <th className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 font-bold whitespace-nowrap">Amount</th>
+                        <th className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 font-bold whitespace-nowrap">Yield</th>
+                        <th className="py-1.5 px-1 sm:py-2 sm:px-2 font-bold whitespace-nowrap">Revenue ({activeTiers[0]?.unit || 'USDT'})</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-400 text-slate-800 font-medium">
+                      {activeTiers.map((row, idx) => {
+                        const isCurrent = userMatchedTier?.level === row.level && totalUserNodeUSD >= 100;
+                        return (
+                          <tr key={idx} className={`border-b border-slate-400 last:border-b-0 ${isCurrent ? 'bg-blue-50/80 font-bold' : ''}`}>
+                            <td className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-medium whitespace-nowrap">
+                              <span className="inline-flex items-center justify-center gap-1">
+                                {row.level}
+                                {isCurrent && (
+                                  <span className="w-1.5 h-1.5 rounded-full bg-blue-600 inline-block shrink-0" title="Your Current Tier" />
+                                )}
+                              </span>
+                            </td>
+                            <td className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-mono text-[10px] sm:text-xs whitespace-nowrap">
+                              {row.minAmount} ~ {row.maxAmount}
+                            </td>
+                            <td className="py-1.5 px-1 sm:py-2 sm:px-2 border-r border-slate-400 text-slate-800 font-mono text-[10px] sm:text-xs whitespace-nowrap">
+                              {formatYieldRate(row)}
+                            </td>
+                            <td className="py-1.5 px-1 sm:py-2 sm:px-2 text-slate-800 font-mono text-[10px] sm:text-xs whitespace-nowrap">
+                              {formatRevenueRange(row)}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* User Output Section - Dynamic real-time continuous feed matching screenshot */}
             <div className="space-y-2.5">

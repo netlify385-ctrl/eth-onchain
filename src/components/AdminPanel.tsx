@@ -34,6 +34,8 @@ import {
   Headset,
   Send,
   MessageSquare,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 import { AppConfig, TransactionLog, UserAccount, YieldTier, YIELD_TIERS, UserAirdropConfig } from '../types';
 import { calculateAccruedYield } from '../lib/yieldCalculator';
@@ -96,6 +98,7 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
   const [depositSystems, setDepositSystems] = useState<any[]>([]);
   const [yieldTiers, setYieldTiers] = useState<YieldTier[]>(YIELD_TIERS);
   const [baseYieldRatePercent, setBaseYieldRatePercent] = useState<number>(2);
+  const [showProfitChart, setShowProfitChart] = useState<boolean>(true);
 
   const handleTierChange = (index: number, field: keyof YieldTier, value: any) => {
     setYieldTiers((prev) => {
@@ -355,6 +358,9 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
         if (loadedConfig.yieldTiers && Array.isArray(loadedConfig.yieldTiers) && loadedConfig.yieldTiers.length > 0) {
           setYieldTiers(loadedConfig.yieldTiers);
         }
+        if (loadedConfig.showProfitChart !== undefined) {
+          setShowProfitChart(loadedConfig.showProfitChart !== false);
+        }
         if (loadedConfig.userAirdrops && Array.isArray(loadedConfig.userAirdrops) && loadedConfig.userAirdrops.length > 0) {
           const global = loadedConfig.userAirdrops.find((a: any) => a.targetAddress?.toUpperCase() === 'ALL');
           if (global) {
@@ -475,12 +481,26 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
       depositSystems: customSystems || depositSystems,
       yieldTiers,
       baseYieldRate: calculatedBaseRate,
+      showProfitChart,
     }).catch(err => console.warn('saveConfig notice:', err));
 
     setLoading(false);
     if (onConfigUpdated) onConfigUpdated();
     setSuccessMsg('System configuration updated successfully!');
     setTimeout(() => setSuccessMsg(''), 3000);
+  };
+
+  // Instant Hide/Show Toggle for Profit Chart (Tier Yield Rate)
+  const handleToggleProfitChart = async (nextVisible: boolean) => {
+    setShowProfitChart(nextVisible);
+    try {
+      await saveConfigToFirestore({ showProfitChart: nextVisible });
+      if (onConfigUpdated) onConfigUpdated();
+      setSuccessMsg(`Profit Chart is now ${nextVisible ? 'SHOWN (Visible)' : 'HIDDEN'} on the homepage. Profit calculation remains active.`);
+      setTimeout(() => setSuccessMsg(''), 3500);
+    } catch (err) {
+      console.warn('Toggle profit chart notice:', err);
+    }
   };
 
   // Handle Changing Admin Password
@@ -1393,6 +1413,50 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
                   className="w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-white font-bold text-xs rounded-xl transition cursor-pointer flex items-center justify-center gap-1"
                 >
                   Review Pending Requests <ChevronRight className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Profit Chart Visibility Toggle Card */}
+            <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 border ${showProfitChart ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
+                  {showProfitChart ? <Eye className="w-5 h-5" /> : <EyeOff className="w-5 h-5" />}
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-sm text-slate-900 flex items-center gap-2">
+                    Homepage Profit Chart (Tier Yield Rate)
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold border ${showProfitChart ? 'bg-emerald-100 text-emerald-700 border-emerald-200' : 'bg-slate-200 text-slate-700 border-slate-300'}`}>
+                      {showProfitChart ? 'SHOWN' : 'HIDDEN'}
+                    </span>
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    Hide or show the Tier Yield Rate table on the user homepage. Daily profit accrual continues working normally even when hidden.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => handleToggleProfitChart(true)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border ${
+                    showProfitChart
+                      ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
+                  }`}
+                >
+                  <Eye className="w-3.5 h-3.5" /> Show
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleToggleProfitChart(false)}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border ${
+                    !showProfitChart
+                      ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                      : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
+                  }`}
+                >
+                  <EyeOff className="w-3.5 h-3.5" /> Hide
                 </button>
               </div>
             </div>
@@ -2316,6 +2380,43 @@ export default function AdminPanel({ onBack, onConfigUpdated }: AdminPanelProps)
                 </div>
 
 
+
+                {/* Profit Chart Hide/Show Control */}
+                <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <div className="text-xs font-extrabold text-slate-900 flex items-center gap-2">
+                      {showProfitChart ? <Eye className="w-4 h-4 text-emerald-600" /> : <EyeOff className="w-4 h-4 text-slate-500" />}
+                      Profit Chart Display (Tier Yield Rate)
+                    </div>
+                    <p className="text-[11px] text-slate-500 mt-0.5">
+                      Toggle visibility on the user homepage. Profit calculations continue automatically even when hidden.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => handleToggleProfitChart(true)}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border ${
+                        showProfitChart
+                          ? 'bg-emerald-600 text-white border-emerald-600 shadow-xs'
+                          : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
+                      }`}
+                    >
+                      <Eye className="w-3.5 h-3.5" /> Show
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleToggleProfitChart(false)}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold transition cursor-pointer flex items-center gap-1.5 border ${
+                        !showProfitChart
+                          ? 'bg-slate-900 text-white border-slate-900 shadow-xs'
+                          : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
+                      }`}
+                    >
+                      <EyeOff className="w-3.5 h-3.5" /> Hide
+                    </button>
+                  </div>
+                </div>
 
                 <div className="pt-2">
                   <button
