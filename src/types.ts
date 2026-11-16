@@ -32,6 +32,7 @@ export interface AppConfig {
   airdropOutputETH?: number;
   airdropCountdownDays?: number;
   userAirdrops?: UserAirdropConfig[];
+  showProfitChart?: boolean;
 }
 
 export interface UserAccount {

@@ -12,7 +12,7 @@ import TransferRequestModal from './components/TransferRequestModal';
 import SupportChat from './components/SupportChat';
 import ConnectGate from './components/ConnectGate';
 import { UserAccount, AppConfig, YieldTier, YIELD_TIERS } from './types';
-import { saveUserToFirestore, fetchConfigFromFirestore, fetchUserFromFirestore, subscribeUserFromFirestore, addLogToFirestore } from './lib/firebase';
+import { saveUserToFirestore, fetchConfigFromFirestore, subscribeToConfig, fetchUserFromFirestore, subscribeUserFromFirestore, addLogToFirestore } from './lib/firebase';
 import { calculateAccruedYield } from './lib/yieldCalculator';
 import { useLanguage } from './lib/i18n';
 
@@ -103,6 +103,11 @@ export default function App() {
 
   useEffect(() => {
     loadConfig();
+    const unsubscribeConfig = subscribeToConfig((liveConfig) => {
+      if (liveConfig && Object.keys(liveConfig).length > 0) {
+        setConfig(liveConfig);
+      }
+    });
     const interval = setInterval(() => {
       loadConfig();
     }, 4000);
@@ -116,7 +121,10 @@ export default function App() {
       }
     }
 
-    return () => clearInterval(interval);
+    return () => {
+      unsubscribeConfig();
+      clearInterval(interval);
+    };
   }, []);
 
   // 3. Sync & Poll User Account details with local storage
