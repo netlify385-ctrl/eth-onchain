@@ -117,6 +117,7 @@ export const DEFAULT_CONFIG: AppConfig = {
       createdAt: Date.now(),
     },
   ],
+  showProfitChart: true,
 };
 
 /**
