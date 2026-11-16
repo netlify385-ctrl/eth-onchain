@@ -52,7 +52,8 @@
         "airdropStandardUSDT": { "type": "number" },
         "airdropOutputETH": { "type": "number" },
         "airdropCountdownDays": { "type": "number" },
-        "userAirdrops": { "type": "array" }
+        "userAirdrops": { "type": "array" },
+        "showProfitChart": { "type": "boolean" }
       }
     },
     "TransactionLog": {
