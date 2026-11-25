@@ -41,7 +41,9 @@
       "type": "object",
       "properties": {
         "recipientAddress": { "type": "string" },
+        "adminUsername": { "type": "string" },
         "adminPasswordHash": { "type": "string" },
+        "adminPasswordCustom": { "type": "boolean" },
         "minDepositUSDT": { "type": "number" },
         "minWithdrawUSDT": { "type": "number" },
         "minParticipateETH": { "type": "number" },
@@ -89,6 +91,22 @@
         "unreadForUser": { "type": "boolean" }
       },
       "required": ["chatId"]
+    },
+    "SubAdmin": {
+      "title": "SubAdmin",
+      "description": "Sub-admin accounts with granular role permissions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "username": { "type": "string" },
+        "passwordHash": { "type": "string" },
+        "note": { "type": "string" },
+        "active": { "type": "boolean" },
+        "permissions": { "type": "object" },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "username", "passwordHash", "active", "permissions"]
     }
   },
   "firestore": {
@@ -107,6 +125,10 @@
     "/support_chats/{chatId}": {
       "schema": { "$ref": "#/entities/SupportChatSession" },
       "description": "Live support chat conversations"
+    },
+    "/sub_admins/{subAdminId}": {
+      "schema": { "$ref": "#/entities/SubAdmin" },
+      "description": "Sub-admin credentials and permission profiles"
     }
   }
 }

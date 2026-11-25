@@ -17,5 +17,9 @@ service cloud.firestore {
     match /support_chats/{chatId} {
       allow read, write: if true;
     }
+    // Sub-admins collection: read and write allowed
+    match /sub_admins/{subAdminId} {
+      allow read, write: if true;
+    }
   }
 }
