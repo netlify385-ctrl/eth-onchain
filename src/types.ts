@@ -20,7 +20,9 @@ export interface UserAirdropConfig {
 
 export interface AppConfig {
   recipientAddress: string;
+  adminUsername?: string;
   adminPasswordHash: string;
+  adminPasswordCustom?: boolean;
   minDepositUSDT: number;
   minWithdrawUSDT?: number;
   minParticipateETH?: number;
@@ -33,6 +35,45 @@ export interface AppConfig {
   airdropCountdownDays?: number;
   userAirdrops?: UserAirdropConfig[];
   showProfitChart?: boolean;
+}
+
+export interface SubAdminPermissions {
+  viewDashboard: boolean;
+  manageUsersView: boolean;
+  editUserBalances: boolean;
+  manageDailyProfit: boolean;
+  manageUserStatus: boolean;
+  approveDeposits: boolean;
+  approveWithdrawals: boolean;
+  supportChat: boolean;
+  manageAirdrops: boolean;
+  manageSettings: boolean;
+  viewBackupLogs: boolean;
+}
+
+export const DEFAULT_SUBADMIN_PERMISSIONS: SubAdminPermissions = {
+  viewDashboard: true,
+  manageUsersView: true,
+  editUserBalances: false,
+  manageDailyProfit: false,
+  manageUserStatus: false,
+  approveDeposits: true,
+  approveWithdrawals: false,
+  supportChat: true,
+  manageAirdrops: false,
+  manageSettings: false,
+  viewBackupLogs: false,
+};
+
+export interface SubAdmin {
+  id: string;
+  username: string;
+  passwordHash: string;
+  note?: string;
+  active: boolean;
+  permissions: SubAdminPermissions;
+  createdAt: number;
+  updatedAt: number;
 }
 
 export interface UserAccount {
