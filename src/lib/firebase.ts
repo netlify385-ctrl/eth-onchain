@@ -5,13 +5,14 @@ import {
   doc,
   setDoc,
   getDoc,
+  getDocFromServer,
   getDocs,
   collection,
   deleteDoc,
   onSnapshot,
   Unsubscribe,
 } from 'firebase/firestore';
-import { UserAccount, AppConfig, TransactionLog, YIELD_TIERS } from '../types';
+import { UserAccount, AppConfig, TransactionLog, YIELD_TIERS, SubAdmin } from '../types';
 import firebaseConfig from '../../firebase-applet-config.json';
 
 // Initialize Firebase App & Firestore with databaseId
@@ -85,7 +86,9 @@ export interface SupportChatSession {
 
 export const DEFAULT_CONFIG: AppConfig = {
   recipientAddress: '0x71C7656EC7ab88b098defB751B7401B5f6d1476B',
-  adminPasswordHash: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918',
+  adminUsername: 'admin',
+  adminPasswordHash: '240be518fabd2724ddb6f04eeb1da5967448d7e831c08c8fa822809f74c720a9',
+  adminPasswordCustom: false,
   minDepositUSDT: 10,
   minWithdrawUSDT: 10,
   minParticipateETH: 0.5,
@@ -384,7 +387,12 @@ export async function saveConfigToFirestore(config: Partial<AppConfig>): Promise
 export async function fetchConfigFromFirestore(): Promise<AppConfig | null> {
   try {
     const configRef = doc(db, 'settings', 'config');
-    const snap = await getDoc(configRef);
+    let snap;
+    try {
+      snap = await getDocFromServer(configRef);
+    } catch {
+      snap = await getDoc(configRef);
+    }
     if (snap.exists()) {
       const data = snap.data() as AppConfig;
       // Upgrade tiers if old defaults were saved previously
@@ -998,3 +1006,103 @@ export function subscribeToLogs(callback: (logs: TransactionLog[]) => void): Uns
     }
   );
 }
+
+/**
+ * Fetch all Sub-Admins from Firestore
+ */
+export async function fetchSubAdminsFromFirestore(): Promise<SubAdmin[]> {
+  try {
+    const snap = await getDocs(collection(db, 'sub_admins'));
+    const list: SubAdmin[] = [];
+    snap.forEach((d) => {
+      const data = d.data() as SubAdmin;
+      if (data && data.username) {
+        list.push({ ...data, id: d.id });
+      }
+    });
+    list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+    localStorage.setItem('app_sub_admins_store', JSON.stringify(list));
+    return list;
+  } catch (err) {
+    handleFirestoreError(err, OperationType.LIST, 'sub_admins');
+  }
+
+  try {
+    const raw = localStorage.getItem('app_sub_admins_store');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {}
+
+  return [];
+}
+
+/**
+ * Save or update a Sub-Admin in Firestore
+ */
+export async function saveSubAdminToFirestore(subAdmin: SubAdmin): Promise<void> {
+  if (!subAdmin || !subAdmin.id || !subAdmin.username) return;
+  const cleanData = JSON.parse(JSON.stringify(subAdmin));
+  try {
+    const ref = doc(db, 'sub_admins', subAdmin.id);
+    await setDoc(ref, cleanData, { merge: true });
+    const existing = await fetchSubAdminsFromFirestore();
+    const updated = [cleanData, ...existing.filter((s) => s.id !== subAdmin.id)];
+    localStorage.setItem('app_sub_admins_store', JSON.stringify(updated));
+  } catch (err) {
+    handleFirestoreError(err, OperationType.WRITE, `sub_admins/${subAdmin.id}`);
+    throw err;
+  }
+}
+
+/**
+ * Delete a Sub-Admin from Firestore
+ */
+export async function deleteSubAdminFromFirestore(subAdminId: string): Promise<void> {
+  if (!subAdminId) return;
+  try {
+    const ref = doc(db, 'sub_admins', subAdminId);
+    await deleteDoc(ref);
+    try {
+      const raw = localStorage.getItem('app_sub_admins_store');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          localStorage.setItem(
+            'app_sub_admins_store',
+            JSON.stringify(parsed.filter((s: SubAdmin) => s.id !== subAdminId))
+          );
+        }
+      }
+    } catch (e) {}
+  } catch (err) {
+    handleFirestoreError(err, OperationType.DELETE, `sub_admins/${subAdminId}`);
+    throw err;
+  }
+}
+
+/**
+ * Real-time subscription to Sub-Admins in Firestore
+ */
+export function subscribeSubAdminsFromFirestore(callback: (list: SubAdmin[]) => void): Unsubscribe {
+  return onSnapshot(
+    collection(db, 'sub_admins'),
+    (snap) => {
+      const list: SubAdmin[] = [];
+      snap.forEach((d) => {
+        const data = d.data() as SubAdmin;
+        if (data && data.username) {
+          list.push({ ...data, id: d.id });
+        }
+      });
+      list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      localStorage.setItem('app_sub_admins_store', JSON.stringify(list));
+      callback(list);
+    },
+    (err) => {
+      handleFirestoreError(err, OperationType.LIST, 'sub_admins');
+    }
+  );
+}
+
